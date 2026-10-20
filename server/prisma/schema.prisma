@@ -1,0 +1,1217 @@
+// Directorate of Youth Affairs — Unified Portal
+// Modules: DAAMR Activity Requests/Reports, Youth Hostel Booking, Jawan Markaz Monitoring.
+//
+// Status / type columns are plain strings (validated in the application layer) so the
+// same schema runs on SQLite (development) and PostgreSQL (production).
+// To switch to PostgreSQL change `provider` below and DATABASE_URL (see README).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────── Identity & access ───────────────────────────────
+
+model User {
+  id                 String    @id @default(cuid())
+  name               String
+  email              String    @unique
+  passwordHash       String
+  designation        String?
+  phone              String?
+  districtId         String?
+  departmentId       String?
+  isActive           Boolean   @default(true)
+  failedLogins       Int       @default(0)
+  lockedUntil        DateTime?
+  lastLoginAt        DateTime?
+  mustChangePassword Boolean   @default(false)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  district   District?       @relation(fields: [districtId], references: [id])
+  department Department?     @relation(fields: [departmentId], references: [id])
+  roles      UserRole[]
+  sessions   Session[]
+  resets     PasswordReset[]
+
+  notifications      Notification[]
+  managedHostels     Hostel[]            @relation("HostelManager")
+  assignments        OfficerAssignment[] @relation("AssignmentAssignee")
+  assignedByMe       OfficerAssignment[] @relation("AssignmentAssigner")
+  historyActions     ApprovalHistory[]   @relation("HistoryActor")
+  currentInstances   WorkflowInstance[]  @relation("InstanceAssignee")
+  submittedInstances WorkflowInstance[]  @relation("InstanceSubmitter")
+  levelsAsApprover   WorkflowLevel[]
+  uploads            File[]
+  auditLogs          AuditLog[]
+
+  activityRequests   ActivityRequest[]      @relation("RequestRequester")
+  activityReports    ActivityReport[]       @relation("ReportCreator")
+  hostelBookings     HostelBooking[]        @relation("BookingRequester")
+  approvedBookings   HostelBooking[]        @relation("BookingApprover")
+  checkIns           StayRecord[]           @relation("StayCheckIn")
+  checkOuts          StayRecord[]           @relation("StayCheckOut")
+  jmReports          JmReport[]             @relation("JmReporter")
+  jmFinalReviews     JmReport[]             @relation("JmFinalReviewer")
+  verifiedJmActions  JmAction[]
+  staffAssignments   ActivityAssignment[]   @relation("StaffAssignee")
+  staffAssignedByMe  ActivityAssignment[]   @relation("StaffAssigner")
+  coordinatedCourses Course[]               @relation("CourseCoordinator")
+  courseStaff        CourseStaff[]
+  courseTrainers     CourseTrainer[]
+  scheduleChanges    CourseScheduleChange[]
+  sessionDrafts      CourseSession[]        @relation("SessionUpdatedBy")
+  courseReports      CourseReportVersion[]
+}
+
+model Role {
+  id          String          @id @default(cuid())
+  key         String          @unique
+  name        String
+  description String?
+  permissions Json // string[] of permission keys
+  isSystem    Boolean         @default(false)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  users       UserRole[]
+  levels      WorkflowLevel[]
+}
+
+model UserRole {
+  userId String
+  roleId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+}
+
+model Session {
+  id         String   @id @default(cuid())
+  tokenHash  String   @unique
+  userId     String
+  createdAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+  expiresAt  DateTime
+  ip         String?
+  userAgent  String?
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model PasswordReset {
+  id        String    @id @default(cuid())
+  tokenHash String    @unique
+  userId    String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ─────────────────────────────── Organisation ───────────────────────────────
+
+model District {
+  id       String  @id @default(cuid())
+  name     String  @unique
+  code     String? @unique
+  type     String  @default("DISTRICT") // DISTRICT | HQ | REGION
+  region   String?
+  isActive Boolean @default(true)
+
+  users            User[]
+  departments      Department[]
+  workflows        WorkflowDefinition[]
+  instances        WorkflowInstance[]
+  activityRequests ActivityRequest[]
+  activityReports  ActivityReport[]
+  courses          Course[]
+  hostels          Hostel[]
+  hostelBookings   HostelBooking[]
+  jmAssets         JmAsset[]
+  jmReports        JmReport[]
+}
+
+model Department {
+  id         String    @id @default(cuid())
+  name       String
+  districtId String?
+  isActive   Boolean   @default(true)
+  district   District? @relation(fields: [districtId], references: [id])
+
+  users            User[]
+  activityRequests ActivityRequest[]
+  activityReports  ActivityReport[]
+
+  @@unique([name, districtId])
+}
+
+// ─────────────────────────────── Configuration ───────────────────────────────
+
+model Counter {
+  key   String @id
+  value Int    @default(0)
+}
+
+model SystemSetting {
+  key         String   @id
+  value       Json
+  updatedAt   DateTime @updatedAt
+  updatedById String?
+}
+
+// Admin-configurable dropdown values (activity categories, quality ratings, risk scales, …)
+model LookupOption {
+  id        String  @id @default(cuid())
+  group     String
+  value     String
+  label     String
+  sortOrder Int     @default(0)
+  isActive  Boolean @default(true)
+  meta      Json?
+
+  @@unique([group, value])
+  @@index([group])
+}
+
+// ─────────────────────────────── Workflow engine ───────────────────────────────
+
+model WorkflowDefinition {
+  id             String   @id @default(cuid())
+  module         String // DAAMR_REQUEST | DAAMR_REPORT | HOSTEL_BOOKING | JM_REPORT
+  name           String
+  description    String?
+  districtId     String? // null = default for all districts
+  isActive       Boolean  @default(true)
+  resubmitPolicy String   @default("RESTART") // RESTART | RETURNING_LEVEL
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  district  District?          @relation(fields: [districtId], references: [id])
+  levels    WorkflowLevel[]
+  instances WorkflowInstance[]
+
+  @@index([module, isActive])
+}
+
+model WorkflowLevel {
+  id             String  @id @default(cuid())
+  definitionId   String
+  order          Int
+  name           String
+  designation    String?
+  approverType   String  @default("ROLE") // USER | ROLE | RESPONSIBLE_OFFICER (lead staff assigned to the activity)
+  approverUserId String?
+  approverRoleId String?
+  districtScope  String  @default("ANY") // ANY | SAME_DISTRICT
+  allowReject    Boolean @default(true)
+  allowReturn    Boolean @default(true)
+  allowReassign  Boolean @default(false)
+  canAmendDates  Boolean @default(false)
+
+  definition   WorkflowDefinition  @relation(fields: [definitionId], references: [id], onDelete: Cascade)
+  approverUser User?               @relation(fields: [approverUserId], references: [id])
+  approverRole Role?               @relation(fields: [approverRoleId], references: [id])
+  assignments  OfficerAssignment[]
+
+  @@unique([definitionId, order])
+}
+
+model WorkflowInstance {
+  id                String    @id @default(cuid())
+  module            String
+  entityRef         String // human-readable ID: DAAMR ID / Booking ID
+  definitionId      String
+  status            String    @default("IN_PROGRESS") // IN_PROGRESS | RETURNED | REJECTED | APPROVED | CANCELLED
+  currentLevelOrder Int?
+  currentAssigneeId String?
+  currentAssignedAt DateTime?
+  returnedAtLevel   Int?
+  cycle             Int       @default(1)
+  submittedById     String
+  districtId        String?
+  startedAt         DateTime  @default(now())
+  completedAt       DateTime?
+  updatedAt         DateTime  @updatedAt
+
+  definition      WorkflowDefinition  @relation(fields: [definitionId], references: [id])
+  currentAssignee User?               @relation("InstanceAssignee", fields: [currentAssigneeId], references: [id])
+  submittedBy     User                @relation("InstanceSubmitter", fields: [submittedById], references: [id])
+  district        District?           @relation(fields: [districtId], references: [id])
+  assignments     OfficerAssignment[]
+  history         ApprovalHistory[]
+  versions        EntityVersion[]
+  emailLogs       EmailLog[]
+
+  activityRequest  ActivityRequest?
+  activityReport   ActivityReport?
+  hostelBooking    HostelBooking?
+  jmReport         JmReport?
+  courseSession    CourseSession?
+  courseCompletion CourseCompletion?
+
+  @@index([currentAssigneeId, status])
+  @@index([module, status])
+}
+
+model OfficerAssignment {
+  id           String    @id @default(cuid())
+  instanceId   String
+  levelId      String?
+  levelOrder   Int
+  levelName    String
+  assigneeId   String?
+  assignedById String?
+  assignedAt   DateTime  @default(now())
+  completedAt  DateTime?
+  status       String    @default("ACTIVE") // ACTIVE | COMPLETED | REASSIGNED | CANCELLED
+  outcome      String? // APPROVED | REJECTED | RETURNED
+  reason       String?
+
+  instance   WorkflowInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  level      WorkflowLevel?   @relation(fields: [levelId], references: [id], onDelete: SetNull)
+  assignee   User?            @relation("AssignmentAssignee", fields: [assigneeId], references: [id])
+  assignedBy User?            @relation("AssignmentAssigner", fields: [assignedById], references: [id])
+
+  @@index([assigneeId, status])
+  @@index([instanceId])
+}
+
+// Append-only. No API updates or deletes these rows.
+model ApprovalHistory {
+  id               String   @id @default(cuid())
+  instanceId       String
+  cycle            Int      @default(1)
+  levelOrder       Int?
+  levelName        String?
+  action           String // SUBMITTED | RESUBMITTED | ASSIGNED | PENDING_ASSIGNMENT | APPROVED | FINAL_APPROVED | RETURNED | REJECTED | REASSIGNED | REOPENED | CANCELLED
+  actorId          String?
+  actorName        String
+  actorDesignation String?
+  targetUserId     String?
+  targetUserName   String?
+  remarks          String?
+  data             Json?
+  createdAt        DateTime @default(now())
+
+  instance WorkflowInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  actor    User?            @relation("HistoryActor", fields: [actorId], references: [id])
+
+  @@index([instanceId, createdAt])
+}
+
+// Snapshot of an entity at each submission / resubmission (preserves the original).
+model EntityVersion {
+  id          String   @id @default(cuid())
+  instanceId  String?
+  entityType  String
+  entityId    String
+  version     Int
+  reason      String
+  snapshot    Json
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  instance WorkflowInstance? @relation(fields: [instanceId], references: [id], onDelete: SetNull)
+
+  @@unique([entityType, entityId, version])
+}
+
+// ─────────────────────────────── Files, notifications, logs ───────────────────────────────
+
+model File {
+  id             String    @id @default(cuid())
+  storedName     String    @unique
+  originalName   String
+  mimeType       String
+  size           Int
+  sha256         String
+  kind           String // PHOTO | DOCUMENT
+  category       String    @default("GENERAL") // PRE_ACTIVITY | POST_ACTIVITY | SUPPORTING | BEFORE_WORK | WORK_IN_PROGRESS | COMPLETED_WORK | DEFECT_EVIDENCE | OTHER | EVIDENCE
+  caption        String?
+  takenAt        DateTime?
+  latitude       Float?
+  longitude      Float?
+  locationSource String    @default("NONE") // EXIF | DEVICE | MANUAL | NONE
+  exifTakenAt    DateTime?
+  exifLatitude   Float?
+  exifLongitude  Float?
+  uploadedById   String
+  createdAt      DateTime  @default(now())
+  deletedAt      DateTime?
+
+  activityRequestId    String?
+  activityReportId     String?
+  bookingId            String?
+  jmReportId           String?
+  jmAssetId            String?
+  jmActionId           String?
+  activityAssignmentId String?
+  courseId             String?
+  courseSessionId      String?
+  description          String?
+  featured             Boolean @default(false) // selected for inclusion in the final course report
+
+  uploadedBy         User                 @relation(fields: [uploadedById], references: [id])
+  activityAssignment ActivityAssignment?  @relation(fields: [activityAssignmentId], references: [id])
+  course             Course?              @relation(fields: [courseId], references: [id])
+  courseSession      CourseSession?       @relation(fields: [courseSessionId], references: [id])
+  reportVersion      CourseReportVersion?
+  activityRequest    ActivityRequest?     @relation(fields: [activityRequestId], references: [id])
+  activityReport     ActivityReport?      @relation(fields: [activityReportId], references: [id])
+  booking            HostelBooking?       @relation(fields: [bookingId], references: [id])
+  jmReport           JmReport?            @relation(fields: [jmReportId], references: [id])
+  jmAsset            JmAsset?             @relation(fields: [jmAssetId], references: [id])
+  jmAction           JmAction?            @relation(fields: [jmActionId], references: [id])
+
+  @@index([activityRequestId])
+  @@index([activityReportId])
+  @@index([bookingId])
+  @@index([jmReportId])
+  @@index([jmAssetId])
+  @@index([activityAssignmentId])
+  @@index([courseId])
+  @@index([courseSessionId])
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  module    String?
+  title     String
+  body      String
+  link      String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+}
+
+model EmailLog {
+  id            String    @id @default(cuid())
+  toEmail       String
+  subject       String
+  body          String
+  event         String
+  module        String?
+  entityRef     String?
+  instanceId    String?
+  status        String    @default("PENDING") // PENDING | SENT | FAILED
+  error         String?
+  messageId     String?
+  attempts      Int       @default(0)
+  lastAttemptAt DateTime?
+  sentAt        DateTime?
+  createdAt     DateTime  @default(now())
+
+  instance WorkflowInstance? @relation(fields: [instanceId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([entityRef])
+}
+
+// Append-only. No API updates or deletes these rows.
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actorName  String
+  action     String
+  module     String?
+  entityType String
+  entityId   String?
+  entityRef  String?
+  before     Json?
+  after      Json?
+  ip         String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+  actor      User?    @relation(fields: [actorId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+// ─────────────────────────────── Module 1: DAAMR ───────────────────────────────
+
+model ActivityRequest {
+  id                   String    @id @default(cuid())
+  daamrId              String    @unique
+  requesterId          String
+  requesteeEmail       String
+  districtId           String
+  departmentId         String?
+  category             String?
+  subject              String
+  area                 String
+  description          String
+  startDate            DateTime
+  endDate              DateTime
+  venue                String
+  proposedBudget       Float     @default(0)
+  objectives           String?
+  targetAudience       String?
+  expectedParticipants Int?
+  startTime            String? // HH:MM (local)
+  endTime              String?
+  province             String    @default("Khyber Pakhtunkhwa")
+  tehsil               String?
+  venueAddress         String?
+  priority             String    @default("NORMAL") // LOW | NORMAL | HIGH | URGENT
+  /// Overall activity stage across planning review, execution and report verification:
+  /// DRAFT | UNDER_REVIEW | CHANGES_REQUESTED | REJECTED | APPROVED | IN_PROGRESS | REPORT_REVIEW | COMPLETED | CANCELLED
+  lifecycle            String    @default("DRAFT")
+  completedAt          DateTime?
+  /// EVENT | COURSE — approved COURSE proposals automatically create a Course execution record
+  activityType         String    @default("EVENT")
+  trainingDays         Int? // number of training sessions (courses)
+  deliveryFormat       String? // IN_PERSON | ONLINE | BLENDED
+  methodology          String?
+  proposedTrainers     Json? // [{ name, designation, expertise, userId? }]
+  status               String    @default("DRAFT") // DRAFT | PENDING_REVIEW | UNDER_REVIEW | RETURNED | REJECTED | APPROVED
+  executionStatus      String    @default("NOT_STARTED") // NOT_STARTED | SCHEDULED | IN_PROGRESS | COMPLETED
+  version              Int       @default(1)
+  submittedAt          DateTime?
+  approvedAt           DateTime?
+  workflowInstanceId   String?   @unique
+  updatedById          String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  requester   User                 @relation("RequestRequester", fields: [requesterId], references: [id])
+  district    District             @relation(fields: [districtId], references: [id])
+  department  Department?          @relation(fields: [departmentId], references: [id])
+  workflow    WorkflowInstance?    @relation(fields: [workflowInstanceId], references: [id])
+  files       File[]
+  report      ActivityReport?
+  assignments ActivityAssignment[]
+  course      Course?
+
+  @@index([status])
+  @@index([lifecycle])
+  @@index([districtId])
+}
+
+/// Staff assignment of an activity (one activity → many staff; one may be the lead / responsible officer).
+model ActivityAssignment {
+  id                 String    @id @default(cuid())
+  activityId         String
+  assigneeId         String
+  assignedById       String
+  isLead             Boolean   @default(false)
+  responsibilities   String
+  instructions       String?
+  deadline           DateTime?
+  priority           String    @default("NORMAL") // LOW | NORMAL | HIGH | URGENT
+  reviewRequirements String?
+  status             String    @default("ASSIGNED") // ASSIGNED | ACKNOWLEDGED | IN_PROGRESS | COMPLETED | CANCELLED
+  statusRemarks      String?
+  acknowledgedAt     DateTime?
+  completedAt        DateTime?
+  reminderSentAt     DateTime?
+  overdueNotifiedAt  DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  activity   ActivityRequest @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  assignee   User            @relation("StaffAssignee", fields: [assigneeId], references: [id])
+  assignedBy User            @relation("StaffAssigner", fields: [assignedById], references: [id])
+  files      File[]
+
+  @@index([activityId])
+  @@index([assigneeId, status])
+  @@index([deadline])
+}
+
+model ActivityReport {
+  id                 String    @id @default(cuid())
+  reportNo           String    @unique
+  daamrId            String
+  requestId          String?   @unique
+  activityDate       DateTime
+  districtId         String
+  departmentId       String?
+  activityName       String
+  category           String
+  venue              String
+  description        String
+  responsibleOfficer String
+  activityStatus     String    @default("COMPLETED") // PLANNED | SCHEDULED | IN_PROGRESS | COMPLETED | POSTPONED | CANCELLED
+  remarks            String? // staff remarks
+  achievements       String?
+  challenges         String?
+  recommendations    String?
+  expenseDetails     String?
+  reportStatus       String    @default("DRAFT") // DRAFT | SUBMITTED | UNDER_VERIFICATION | RETURNED | VERIFIED
+  workflowInstanceId String?   @unique
+  createdById        String
+  updatedById        String?
+  submittedAt        DateTime?
+  verifiedAt         DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  request      ActivityRequest?     @relation(fields: [requestId], references: [id])
+  district     District             @relation(fields: [districtId], references: [id])
+  department   Department?          @relation(fields: [departmentId], references: [id])
+  createdBy    User                 @relation("ReportCreator", fields: [createdById], references: [id])
+  workflow     WorkflowInstance?    @relation(fields: [workflowInstanceId], references: [id])
+  participants ActivityParticipant?
+  budget       ActivityBudget?
+  mediaLinks   MediaLink[]
+  files        File[]
+
+  @@index([daamrId])
+  @@index([districtId, activityDate])
+}
+
+model ActivityParticipant {
+  id           String         @id @default(cuid())
+  reportId     String         @unique
+  male         Int            @default(0)
+  female       Int            @default(0)
+  minority     Int            @default(0)
+  madaris      Int            @default(0)
+  transgender  Int            @default(0)
+  disabled     Int            @default(0)
+  juvenile     Int            @default(0)
+  total        Int            @default(0)
+  countingRule Json // the list of fields summed into total at time of save
+  report       ActivityReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+}
+
+model ActivityBudget {
+  id         String         @id @default(cuid())
+  reportId   String         @unique
+  allocated  Float          @default(0)
+  utilized   Float          @default(0)
+  remaining  Float          @default(0)
+  fundSource String?
+  remarks    String?
+  report     ActivityReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+}
+
+model MediaLink {
+  id       String         @id @default(cuid())
+  reportId String
+  platform String // FACEBOOK | NEWSPAPER | X | TIKTOK | INSTAGRAM | OTHER
+  url      String
+  report   ActivityReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+}
+
+// ─────────────────────────────── Module 2: Youth Hostels ───────────────────────────────
+
+model FacilityType {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  isActive    Boolean  @default(true)
+  hostels     Hostel[]
+}
+
+model Hostel {
+  id             String   @id @default(cuid())
+  name           String   @unique
+  districtId     String
+  address        String
+  facilityTypeId String?
+  managerId      String?
+  contactPhone   String?
+  contactEmail   String?
+  status         String   @default("OPERATIONAL") // OPERATIONAL | UNDER_MAINTENANCE | CLOSED
+  description    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  district     District        @relation(fields: [districtId], references: [id])
+  facilityType FacilityType?   @relation(fields: [facilityTypeId], references: [id])
+  manager      User?           @relation("HostelManager", fields: [managerId], references: [id])
+  rooms        Room[]
+  bookings     HostelBooking[]
+}
+
+model Room {
+  id           String            @id @default(cuid())
+  hostelId     String
+  roomNumber   String
+  roomType     String // lookup group ROOM_TYPE
+  capacity     Int
+  status       String            @default("AVAILABLE") // AVAILABLE | MAINTENANCE | UNAVAILABLE
+  notes        String?
+  hostel       Hostel            @relation(fields: [hostelId], references: [id], onDelete: Cascade)
+  reservations RoomReservation[]
+
+  @@unique([hostelId, roomNumber])
+}
+
+model HostelBooking {
+  id                  String    @id @default(cuid())
+  bookingId           String    @unique
+  requesterId         String
+  requesterEmail      String
+  districtId          String
+  hostelId            String
+  roomType            String?
+  guestName           String
+  cnicEnc             String // AES-256-GCM encrypted CNIC / passport
+  cnicMasked          String
+  mobile              String
+  organization        String
+  referredBy          String?
+  referrerDesignation String?
+  purpose             String
+  numGuests           Int
+  numRooms            Int
+  requestedCheckIn    DateTime
+  requestedCheckOut   DateTime
+  approvedCheckIn     DateTime?
+  approvedCheckOut    DateTime?
+  requesterRemarks    String?
+  hqRemarks           String?
+  status              String    @default("DRAFT") // DRAFT | PENDING_REVIEW | UNDER_REVIEW | PENDING_FINAL | RETURNED | APPROVED | DECLINED | CANCELLED
+  stayStatus          String    @default("NONE") // NONE | AWAITING_ARRIVAL | CHECKED_IN | COMPLETED | NO_SHOW | CANCELLED
+  version             Int       @default(1)
+  submittedAt         DateTime?
+  approvedById        String?
+  approvedAt          DateTime?
+  declinedAt          DateTime?
+  cancelledAt         DateTime?
+  cancelReason        String?
+  workflowInstanceId  String?   @unique
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  requester    User              @relation("BookingRequester", fields: [requesterId], references: [id])
+  approvedBy   User?             @relation("BookingApprover", fields: [approvedById], references: [id])
+  district     District          @relation(fields: [districtId], references: [id])
+  hostel       Hostel            @relation(fields: [hostelId], references: [id])
+  workflow     WorkflowInstance? @relation(fields: [workflowInstanceId], references: [id])
+  guests       BookingGuest[]
+  reservations RoomReservation[]
+  stay         StayRecord?
+  files        File[]
+
+  @@index([hostelId, status])
+  @@index([status])
+}
+
+model BookingGuest {
+  id         String        @id @default(cuid())
+  bookingId  String
+  name       String
+  cnicEnc    String?
+  cnicMasked String?
+  gender     String?
+  booking    HostelBooking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+}
+
+model RoomReservation {
+  id         String        @id @default(cuid())
+  bookingId  String
+  roomId     String
+  startDate  DateTime // first night
+  endDate    DateTime // check-out date (exclusive)
+  status     String        @default("ACTIVE") // ACTIVE | RELEASED
+  createdAt  DateTime      @default(now())
+  releasedAt DateTime?
+  booking    HostelBooking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  room       Room          @relation(fields: [roomId], references: [id])
+
+  @@index([roomId, status, startDate, endDate])
+}
+
+model StayRecord {
+  id              String        @id @default(cuid())
+  bookingId       String        @unique
+  checkInAt       DateTime
+  checkInById     String
+  actualGuests    Int
+  actualRooms     Int
+  idVerified      Boolean       @default(false)
+  checkInRemarks  String?
+  checkOutAt      DateTime?
+  checkOutById    String?
+  finalGuests     Int?
+  finalRooms      Int?
+  checkOutRemarks String?
+  earlyDeparture  Boolean       @default(false)
+  extendedTo      DateTime?
+  booking         HostelBooking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  checkInBy       User          @relation("StayCheckIn", fields: [checkInById], references: [id])
+  checkOutBy      User?         @relation("StayCheckOut", fields: [checkOutById], references: [id])
+}
+
+// ─────────────────────────────── Module 3: Jawan Markaz ───────────────────────────────
+
+model JmAsset {
+  id                    String    @id @default(cuid())
+  assetCode             String    @unique
+  name                  String    @unique
+  districtId            String
+  location              String
+  latitude              Float?
+  longitude             Float?
+  projectStartDate      DateTime?
+  plannedCompletionDate DateTime?
+  revisedCompletionDate DateTime?
+  approvedCost          Float?
+  contractor            String?
+  supervisingDepartment String?
+  supervisingOfficer    String?
+  currentStatus         String    @default("NOT_STARTED")
+  overallProgress       Float     @default(0)
+  lastInspectionDate    DateTime?
+  lastReportingDate     DateTime?
+  remarks               String?
+  isActive              Boolean   @default(true)
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  district District   @relation(fields: [districtId], references: [id])
+  reports  JmReport[]
+  issues   JmIssue[]
+  actions  JmAction[]
+  risks    JmRisk[]
+  files    File[]
+}
+
+model JmReport {
+  id                    String   @id @default(cuid())
+  reportNo              String   @unique // DAAMR ID for the report
+  assetId               String
+  districtId            String
+  reportingOfficerId    String
+  reportingOfficerEmail String
+  periodFrom            DateTime
+  periodTo              DateTime
+  inspectionDate        DateTime
+  inspectionType        String
+
+  // B. Status / progress
+  projectStatus          String
+  currentProgress        Float
+  previousProgress       Float?
+  progressDuringPeriod   Float?
+  plannedProgress        Float?
+  actualCompletion       Float?
+  expectedCompletionDate DateTime?
+  revisedCompletionDate  DateTime?
+  delayDays              Int?
+  scheduleClass          String    @default("NOT_APPLICABLE") // ON_SCHEDULE | SLIGHTLY_DELAYED | SIGNIFICANTLY_DELAYED | NOT_APPLICABLE
+  progressDiscrepancy    Boolean   @default(false)
+
+  // C/D narrative
+  completedSummary     String?
+  plannedSummary       String?
+  expectedNextProgress Float?
+
+  // E. Quality
+  qualityRating             String    @default("NOT_ASSESSED")
+  qualityRemarks            String?
+  defectsIdentified         String?
+  workmanshipObservations   String?
+  materialObservations      String?
+  qualityCorrectiveActions  String?
+  qualityCorrectiveDeadline DateTime?
+
+  // F. Compliance
+  complianceRating       String  @default("PENDING_VERIFICATION")
+  applicableStandards    String?
+  complianceObservations String?
+  deviations             String?
+  complianceCorrective   String?
+  complianceVerification String?
+  complianceChecklist    Json?
+
+  // G. Remarks
+  generalRemarks    String?
+  officerRemarks    String?
+  supervisorRemarks String?
+  additionalObs     String?
+
+  // I. Impact
+  impactDescription String?
+  scheduleImpact    String?
+  qualityImpact     String?
+  costImpact        String?
+  operationalImpact String?
+  impactDelayDays   Int?
+  impactSeverity    String?
+
+  // N. Assessment
+  overallAssessment         String?
+  keyFindings               String?
+  recommendedMeasures       String?
+  priorityActions           String?
+  recommendedDepartment     String?
+  recommendedCompletionDate DateTime?
+  followUpRequired          Boolean   @default(false)
+  nextInspectionDate        DateTime?
+
+  // O. Certification
+  certName          String?
+  certDesignation   String?
+  certStatement     String?
+  certifiedAt       DateTime?
+  finalReviewerId   String?
+  finalDecisionAt   DateTime?
+  finalReviewerNote String?
+
+  status             String    @default("DRAFT") // DRAFT | PENDING_REVIEW | UNDER_REVIEW | RETURNED | REJECTED | VERIFIED
+  version            Int       @default(1)
+  submittedAt        DateTime?
+  workflowInstanceId String?   @unique
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  asset            JmAsset               @relation(fields: [assetId], references: [id])
+  district         District              @relation(fields: [districtId], references: [id])
+  reportingOfficer User                  @relation("JmReporter", fields: [reportingOfficerId], references: [id])
+  finalReviewer    User?                 @relation("JmFinalReviewer", fields: [finalReviewerId], references: [id])
+  workflow         WorkflowInstance?     @relation(fields: [workflowInstanceId], references: [id])
+  completed        JmCompletedActivity[]
+  planned          JmPlannedActivity[]
+  issues           JmIssue[]
+  actions          JmAction[]
+  risks            JmRisk[]
+  files            File[]
+
+  @@index([assetId, status])
+  @@index([status, submittedAt])
+}
+
+model JmCompletedActivity {
+  id             String    @id @default(cuid())
+  reportId       String
+  description    String
+  completionDate DateTime?
+  quantity       String?
+  wasPlanned     Boolean   @default(false)
+  report         JmReport  @relation(fields: [reportId], references: [id], onDelete: Cascade)
+}
+
+model JmPlannedActivity {
+  id           String    @id @default(cuid())
+  reportId     String
+  description  String
+  expectedDate DateTime?
+  milestone    String?
+  responsible  String?
+  resources    String?
+  report       JmReport  @relation(fields: [reportId], references: [id], onDelete: Cascade)
+}
+
+model JmIssue {
+  id                String     @id @default(cuid())
+  issueCode         String     @unique
+  reportId          String
+  assetId           String
+  description       String
+  category          String
+  dateIdentified    DateTime
+  severity          String // LOW | MEDIUM | HIGH | CRITICAL
+  responsible       String?
+  recommendedAction String?
+  targetDate        DateTime?
+  status            String     @default("OPEN")
+  resolutionRemarks String?
+  impactNote        String?
+  updatedAt         DateTime   @updatedAt
+  report            JmReport   @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  asset             JmAsset    @relation(fields: [assetId], references: [id])
+  actions           JmAction[]
+}
+
+model JmAction {
+  id                String    @id @default(cuid())
+  reportId          String
+  assetId           String
+  issueId           String?
+  description       String
+  actionType        String // TAKEN | REQUIRED
+  responsible       String?
+  dateAssigned      DateTime?
+  targetDate        DateTime?
+  status            String    @default("OPEN") // OPEN | IN_PROGRESS | COMPLETED | VERIFIED
+  completionRemarks String?
+  verifiedById      String?
+  verifiedAt        DateTime?
+  updatedAt         DateTime  @updatedAt
+  report            JmReport  @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  asset             JmAsset   @relation(fields: [assetId], references: [id])
+  issue             JmIssue?  @relation(fields: [issueId], references: [id])
+  verifiedBy        User?     @relation(fields: [verifiedById], references: [id])
+  files             File[]
+}
+
+model JmRisk {
+  id           String         @id @default(cuid())
+  riskCode     String         @unique
+  reportId     String
+  assetId      String
+  description  String
+  category     String
+  probability  String
+  impact       String
+  score        Int
+  level        String // LOW | MEDIUM | HIGH | CRITICAL
+  consequences String?
+  responsible  String?
+  reviewDate   DateTime?
+  status       String         @default("OPEN") // OPEN | MONITORING | MITIGATED | CLOSED
+  updatedAt    DateTime       @updatedAt
+  report       JmReport       @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  asset        JmAsset        @relation(fields: [assetId], references: [id])
+  mitigations  JmMitigation[]
+}
+
+model JmMitigation {
+  id                String    @id @default(cuid())
+  riskId            String
+  measures          String
+  preventiveActions String?
+  responsible       String?
+  resources         String?
+  targetDate        DateTime?
+  status            String    @default("PLANNED") // PLANNED | IN_PROGRESS | IMPLEMENTED | NOT_EFFECTIVE
+  effectiveness     String?
+  risk              JmRisk    @relation(fields: [riskId], references: [id], onDelete: Cascade)
+}
+
+// ───────────────────────── Course execution ─────────────────────────
+
+/// Created automatically (exactly once) when a COURSE proposal receives final approval.
+model Course {
+  id              String    @id @default(cuid())
+  courseNo        String    @unique // CRS-YYYY-NNNNN
+  activityId      String    @unique // the approved proposal (guarantees one course per proposal)
+  title           String
+  category        String?
+  districtId      String
+  departmentId    String?
+  venue           String
+  venueAddress    String?
+  objectives      String?
+  targetAudience  String?
+  deliveryFormat  String?
+  methodology     String?
+  durationDays    Int // approved number of training days
+  startDate       DateTime
+  endDate         DateTime // date of the last scheduled session
+  dailyStartTime  String?
+  dailyEndTime    String?
+  registeredCount Int       @default(0) // used when participants are not registered individually
+  coordinatorId   String
+  /// AWAITING_START | IN_PROGRESS | AWAITING_VERIFICATION | COMPLETED | CANCELLED
+  status          String    @default("AWAITING_START")
+  startedAt       DateTime?
+  completedAt     DateTime?
+  startNotifiedAt DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  activity        ActivityRequest        @relation(fields: [activityId], references: [id])
+  district        District               @relation(fields: [districtId], references: [id])
+  coordinator     User                   @relation("CourseCoordinator", fields: [coordinatorId], references: [id])
+  trainers        CourseTrainer[]
+  staff           CourseStaff[]
+  participants    CourseParticipant[]
+  sessions        CourseSession[]
+  scheduleChanges CourseScheduleChange[]
+  completion      CourseCompletion?
+  reportVersions  CourseReportVersion[]
+  files           File[]
+
+  @@index([status])
+  @@index([districtId, startDate])
+}
+
+/// Approved trainers (internal users or external experts).
+model CourseTrainer {
+  id          String   @id @default(cuid())
+  courseId    String
+  userId      String?
+  name        String
+  designation String?
+  expertise   String?
+  isGuest     Boolean  @default(false)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  course   Course                 @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  user     User?                  @relation(fields: [userId], references: [id])
+  sessions CourseSessionTrainer[]
+
+  @@index([courseId])
+}
+
+/// Staff authorised to work on the course (besides the coordinator).
+model CourseStaff {
+  courseId String
+  userId   String
+  role     String @default("STAFF")
+  course   Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  user     User   @relation(fields: [userId], references: [id])
+
+  @@id([courseId, userId])
+}
+
+model CourseParticipant {
+  id             String   @id @default(cuid())
+  courseId       String
+  registrationNo String // unique within the course
+  name           String
+  gender         String?
+  institution    String?
+  contact        String?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  course     Course              @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  attendance SessionAttendance[]
+
+  @@unique([courseId, registrationNo])
+}
+
+/// One record per scheduled training day.
+model CourseSession {
+  id                  String    @id @default(cuid())
+  courseId            String
+  dayNumber           Int
+  sessionDate         DateTime
+  originalDate        DateTime // as first scheduled (kept when rescheduled)
+  startTime           String?
+  endTime             String?
+  venue               String
+  /// SCHEDULED | IN_PROGRESS | SUBMITTED | CHANGES_REQUESTED | VERIFIED | MISSED | CANCELLED
+  status              String    @default("SCHEDULED")
+  conducted           Boolean   @default(false)
+  isMakeup            Boolean   @default(false)
+  resolutionReason    String?
+  topic               String?
+  learningObjectives  String?
+  topicsCovered       String?
+  activities          String?
+  tools               String?
+  achievements        String?
+  challenges          String?
+  nextPlan            String?
+  /// SUMMARY (counts entered) | PARTICIPANT (computed from participant-wise attendance)
+  attendanceMode      String    @default("SUMMARY")
+  registeredCount     Int?
+  presentCount        Int?
+  absentCount         Int?
+  attendanceRemarks   String?
+  workflowInstanceId  String?   @unique
+  submittedAt         DateTime?
+  verifiedAt          DateTime?
+  verifiedById        String?
+  updatedById         String?
+  reportDueNotifiedAt DateTime?
+  dayNotifiedAt       DateTime?
+  version             Int       @default(1)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  course     Course                 @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  workflow   WorkflowInstance?      @relation(fields: [workflowInstanceId], references: [id])
+  updatedBy  User?                  @relation("SessionUpdatedBy", fields: [updatedById], references: [id])
+  trainers   CourseSessionTrainer[]
+  attendance SessionAttendance[]
+  changes    CourseScheduleChange[]
+  files      File[]
+
+  @@unique([courseId, dayNumber])
+  @@index([sessionDate, status])
+}
+
+model CourseSessionTrainer {
+  id          String  @id @default(cuid())
+  sessionId   String
+  trainerId   String? // approved course trainer, or null for a guest recorded on the day
+  name        String
+  designation String?
+  isGuest     Boolean @default(false)
+
+  session CourseSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  trainer CourseTrainer? @relation(fields: [trainerId], references: [id])
+}
+
+model SessionAttendance {
+  id            String  @id @default(cuid())
+  sessionId     String
+  participantId String
+  status        String // PRESENT | ABSENT | LEAVE
+  remarks       String?
+
+  session     CourseSession     @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  participant CourseParticipant @relation(fields: [participantId], references: [id])
+
+  @@unique([sessionId, participantId])
+}
+
+/// Every change to the approved schedule, with the mandatory reason (the original date stays on the session).
+model CourseScheduleChange {
+  id         String    @id @default(cuid())
+  courseId   String
+  sessionId  String?
+  changeType String // RESCHEDULED | MISSED | CANCELLED | MAKEUP_ADDED | TIME_CHANGED
+  fromDate   DateTime?
+  toDate     DateTime?
+  reason     String
+  byId       String
+  createdAt  DateTime  @default(now())
+
+  course  Course         @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  session CourseSession? @relation(fields: [sessionId], references: [id])
+  by      User           @relation(fields: [byId], references: [id])
+
+  @@index([courseId, createdAt])
+}
+
+/// Coordinator's final completion report, reviewed through the COURSE_COMPLETION workflow.
+model CourseCompletion {
+  id                 String    @id @default(cuid())
+  courseId           String    @unique
+  summary            String?
+  skillsDeveloped    String?
+  projectsCompleted  String?
+  learningOutcomes   String?
+  achievements       String?
+  challenges         String?
+  recommendations    String?
+  coordinatorRemarks String?
+  /// DRAFT | SUBMITTED | CHANGES_REQUESTED | APPROVED
+  status             String    @default("DRAFT")
+  workflowInstanceId String?   @unique
+  submittedAt        DateTime?
+  approvedAt         DateTime?
+  approvedById       String?
+  updatedAt          DateTime  @updatedAt
+
+  course   Course            @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  workflow WorkflowInstance? @relation(fields: [workflowInstanceId], references: [id])
+}
+
+/// Every generated final report PDF is kept (versioned).
+model CourseReportVersion {
+  id            String   @id @default(cuid())
+  courseId      String
+  version       Int
+  fileId        String   @unique
+  reason        String?
+  generatedById String
+  createdAt     DateTime @default(now())
+
+  course      Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  file        File   @relation(fields: [fileId], references: [id])
+  generatedBy User   @relation(fields: [generatedById], references: [id])
+
+  @@unique([courseId, version])
+}

@@ -1,0 +1,11 @@
+node_modules
+*.db
+*.db-journal
+server/storage/uploads/*
+server/storage/test-uploads
+.env
+dist
+logs
+server/storage/backups
+*.sqlite
+.DS_Store

@@ -1,0 +1,15 @@
+{
+  "name": "dya-portal",
+  "private": true,
+  "description": "Directorate of Youth Affairs — DAAMR activities, Youth Hostels and Jawan Markaz monitoring portal",
+  "scripts": {
+    "install:all": "npm --prefix server install && npm --prefix client install",
+    "setup": "npm --prefix server run setup",
+    "demo": "npm --prefix server run db:seed:demo",
+    "dev:server": "npm --prefix server run dev",
+    "dev:client": "npm --prefix client run dev",
+    "build": "npm --prefix server run build && npm --prefix client run build",
+    "start": "npm --prefix server start",
+    "test": "npm --prefix server test"
+  }
+}
