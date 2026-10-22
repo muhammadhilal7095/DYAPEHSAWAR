@@ -80,17 +80,14 @@ const NAV: NavGroup[] = [
 
 function Brand({ compact }: { compact?: boolean }) {
   const { settings } = useAuth();
+  const logo = settings?.logoFileId ? fileUrl(settings.logoFileId) : '/logos/dya.jpg';
   return (
     <div className="flex items-center gap-3">
-      {settings?.logoFileId ? (
-        <img src={fileUrl(settings.logoFileId)} alt="" className="size-9 rounded-lg bg-white object-contain p-0.5" />
-      ) : (
-        <div className="grid size-9 place-items-center rounded-lg bg-white/15 text-sm font-bold text-white">DYA</div>
-      )}
+      <img src={logo} alt="" className="size-11 shrink-0 rounded-xl bg-white object-contain p-0.5 shadow-md ring-1 ring-white/30" />
       {!compact && (
         <div className="min-w-0 leading-tight">
-          <p className="truncate text-sm font-semibold text-white">{settings?.orgName ?? 'Directorate of Youth Affairs'}</p>
-          <p className="truncate text-[11px] text-white/70">{settings?.orgSubtitle}</p>
+          <p className="text-[14px] font-semibold leading-snug tracking-tight text-white">{settings?.orgName ?? 'Directorate of Youth Affairs'}</p>
+          <p className="mt-0.5 text-[11px] leading-snug text-emerald-100/70">{settings?.orgSubtitle || 'Government of Khyber Pakhtunkhwa'}</p>
         </div>
       )}
     </div>
@@ -109,9 +106,14 @@ function activeGroupOf(groups: NavGroup[], path: string) {
 
 const NAV_STATE_KEY = 'dya.nav.open';
 
+function CountPill({ n }: { n: number }) {
+  return <span className="tabular rounded-full bg-amber-400 px-1.5 py-px text-[10px] font-bold leading-4 text-amber-950">{n > 99 ? '99+' : n}</span>;
+}
+
 function Sidebar({ onNavigate, counts }: { onNavigate?: () => void; counts: Record<string, number> }) {
-  const { can } = useAuth();
+  const { can, me, logout } = useAuth();
   const loc = useLocation();
+  const nav = useNavigate();
   const groups = NAV.map((g) => ({ ...g, items: g.items.filter((i) => !i.perms || can(...i.perms)) })).filter((g) => g.items.length);
   const active = activeGroupOf(groups, loc.pathname);
   const [open, setOpen] = useState<Record<string, boolean>>(() => {
@@ -124,50 +126,76 @@ function Sidebar({ onNavigate, counts }: { onNavigate?: () => void; counts: Reco
     setOpen(next);
     try { localStorage.setItem(NAV_STATE_KEY, JSON.stringify(next)); } catch { /* ignore */ }
   };
+  const initials = me?.name.split(' ').map((p) => p[0]).slice(0, 2).join('');
   return (
-    <nav className="flex h-full flex-col overflow-y-auto bg-brand-800 px-3 pb-6 pt-4 text-white" aria-label="Main navigation">
-      <div className="mb-5 px-2">
+    <nav className="flex h-full flex-col bg-gradient-to-b from-brand-800 to-[#062a1a] text-white" aria-label="Main navigation">
+      <div className="border-b border-white/10 py-4 pl-4 pr-9 pt-5 lg:pr-4">
         <Brand />
       </div>
-      {groups.map((g) => {
-        const fixed = g.title === 'Overview';
-        const isOpen = fixed || (open[g.title] ?? g.title === active);
-        const pending = g.items.reduce((a, i) => a + (counts[i.to] ?? 0), 0);
-        return (
-          <div key={g.title} className="mb-2">
-            {fixed ? (
-              <p className="mb-1 px-2 text-[11px] font-semibold uppercase tracking-wider text-white/55">{g.title}</p>
-            ) : (
-              <button type="button" onClick={() => toggle(g.title, isOpen)} aria-expanded={isOpen}
-                className={cx('flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[11px] font-semibold uppercase tracking-wider transition hover:bg-white/10', g.title === active ? 'text-white' : 'text-white/60')}>
-                <span className="opacity-80">{g.icon}</span>
-                <span className="flex-1 truncate">{g.title}</span>
-                {!isOpen && pending > 0 && <span className="rounded-full bg-amber-400 px-1.5 text-[10px] font-bold text-amber-950">{pending}</span>}
-                <ChevronDown className={cx('size-3.5 transition', isOpen ? '' : '-rotate-90')} aria-hidden />
-              </button>
-            )}
-            {isOpen && (
-              <ul className={cx('space-y-0.5', !fixed && 'mb-2 mt-0.5')}>
-                {g.items.map((i) => (
-                  <li key={i.to}>
-                    <NavLink
-                      to={i.to}
-                      end={i.end}
-                      onClick={onNavigate}
-                      className={({ isActive }) => cx('flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition', isActive ? 'bg-white font-medium text-brand-800 shadow-sm' : 'text-white/85 hover:bg-white/10 hover:text-white')}
-                    >
-                      {i.icon}
-                      <span className="flex-1 truncate">{i.label}</span>
-                      {(counts[i.to] ?? 0) > 0 && <span className="rounded-full bg-amber-400 px-1.5 text-[10px] font-bold text-amber-950">{counts[i.to] > 99 ? '99+' : counts[i.to]}</span>}
-                    </NavLink>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        );
-      })}
-      <p className="mt-auto px-2 pt-4 text-[11px] text-white/45">Tip: press <kbd className="rounded bg-white/10 px-1">Ctrl</kbd> + <kbd className="rounded bg-white/10 px-1">K</kbd> to jump to any page.</p>
+
+      <div className="flex-1 overflow-y-auto px-3 py-4 [scrollbar-width:thin] [scrollbar-color:rgba(255,255,255,.2)_transparent]">
+        {groups.map((g, gi) => {
+          const fixed = g.title === 'Overview';
+          const isOpen = fixed || (open[g.title] ?? g.title === active);
+          const pending = g.items.reduce((a, i) => a + (counts[i.to] ?? 0), 0);
+          return (
+            <div key={g.title} className={cx(gi > 0 && 'mt-3 border-t border-white/[0.07] pt-3')}>
+              {fixed ? (
+                <p className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-100/50">{g.title}</p>
+              ) : (
+                <button type="button" onClick={() => toggle(g.title, isOpen)} aria-expanded={isOpen}
+                  className={cx('group flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-[13px] font-semibold transition hover:bg-white/[0.06]', g.title === active ? 'text-white' : 'text-white/75')}>
+                  <span className={cx('grid size-6 place-items-center rounded-md', g.title === active ? 'bg-emerald-400/20 text-emerald-200' : 'bg-white/[0.06] text-white/70')}>{g.icon}</span>
+                  <span className="flex-1 truncate">{g.title}</span>
+                  {!isOpen && pending > 0 && <CountPill n={pending} />}
+                  <ChevronDown className={cx('size-3.5 text-white/40 transition group-hover:text-white/70', isOpen ? '' : '-rotate-90')} aria-hidden />
+                </button>
+              )}
+              {isOpen && (
+                <ul className={cx('space-y-px', !fixed && 'ml-[23px] mt-1 border-l border-white/10 pl-2')}>
+                  {g.items.map((i) => (
+                    <li key={i.to}>
+                      <NavLink
+                        to={i.to}
+                        end={i.end}
+                        onClick={onNavigate}
+                        className={({ isActive }) =>
+                          cx(
+                            'relative flex items-center gap-2.5 rounded-md px-3 py-[7px] text-[13px] transition',
+                            isActive
+                              ? cx('bg-white/[0.12] font-medium text-white before:absolute before:inset-y-1.5 before:w-[3px] before:rounded-full before:bg-emerald-300', fixed ? 'before:left-0' : 'before:-left-[9px]')
+                              : 'text-white/70 hover:bg-white/[0.06] hover:text-white',
+                          )
+                        }
+                      >
+                        <span className="opacity-90">{i.icon}</span>
+                        <span className="flex-1 truncate">{i.label}</span>
+                        {(counts[i.to] ?? 0) > 0 && <CountPill n={counts[i.to]} />}
+                      </NavLink>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="border-t border-white/10 bg-black/15 px-3 py-3">
+        <div className="flex items-center gap-3 rounded-lg px-2 py-1.5">
+          <span className="grid size-9 shrink-0 place-items-center rounded-full bg-emerald-400/20 text-xs font-semibold text-emerald-100 ring-1 ring-emerald-300/30">{initials}</span>
+          <span className="min-w-0 flex-1 leading-tight">
+            <span className="block truncate text-[13px] font-medium text-white">{me?.name}</span>
+            <span className="block truncate text-[11px] text-white/55">{me?.designation ?? me?.roles[0]?.name}</span>
+          </span>
+          <button type="button" onClick={async () => { await logout(); nav('/login'); }} className="rounded-md p-2 text-white/60 transition hover:bg-white/10 hover:text-white" title="Sign out" aria-label="Sign out">
+            <LogOut className="size-4" />
+          </button>
+        </div>
+        <p className="mt-2 px-2 text-[10px] text-white/35">
+          <kbd className="rounded bg-white/10 px-1 font-sans">Ctrl</kbd> + <kbd className="rounded bg-white/10 px-1 font-sans">K</kbd> to jump to any page
+        </p>
+      </div>
     </nav>
   );
 }
