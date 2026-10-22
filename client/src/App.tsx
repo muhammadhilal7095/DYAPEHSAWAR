@@ -25,6 +25,7 @@ const P = {
   ReportDetail: lazy(() => import('./pages/daamr/ReportDetail')),
   DaamrGallery: lazy(() => import('./pages/daamr/Gallery')),
   DaamrAnalytics: lazy(() => import('./pages/daamr/Analytics')),
+  ReportsHub: lazy(() => import('./pages/daamr/ReportsHub')),
   // Courses
   CourseList: lazy(() => import('./pages/courses/CourseList')),
   CourseDetail: lazy(() => import('./pages/courses/CourseDetail')),
@@ -99,18 +100,20 @@ export function App() {
             <Route path="profile" element={<P.Profile />} />
 
             <Route path="daamr" element={g(['daamr.dashboard', 'daamr.request.create', 'daamr.report.create', 'daamr.assign'], <P.ActivityDashboard />)} />
-            <Route path="daamr/summary" element={g(['daamr.dashboard', 'daamr.request.create'], <P.DaamrDashboard />)} />
             <Route path="daamr/assignments" element={<P.Assignments />} />
             <Route path="daamr/requests" element={<P.RequestList />} />
             <Route path="daamr/requests/new" element={g(['daamr.request.create'], <P.ActivityForm />)} />
             <Route path="daamr/requests/:id" element={<P.ActivityDetail />} />
             <Route path="daamr/requests/:id/edit" element={g(['daamr.request.create'], <P.ActivityForm />)} />
-            <Route path="daamr/reports" element={<P.ReportList />} />
+            <Route element={<P.ReportsHub />}>
+              <Route path="daamr/reports" element={<P.ReportList />} />
+              <Route path="daamr/analytics" element={g(['daamr.dashboard'], <P.DaamrAnalytics />)} />
+              <Route path="daamr/summary" element={g(['daamr.dashboard', 'daamr.request.create'], <P.DaamrDashboard />)} />
+            </Route>
             <Route path="daamr/reports/new" element={<P.ReportForm />} />
             <Route path="daamr/reports/:id" element={<P.ReportDetail />} />
             <Route path="daamr/reports/:id/edit" element={<P.ReportForm />} />
             <Route path="daamr/gallery" element={<P.DaamrGallery />} />
-            <Route path="daamr/analytics" element={g(['daamr.dashboard'], <P.DaamrAnalytics />)} />
 
             <Route path="courses" element={<P.CourseList />} />
             <Route path="courses/:id" element={<P.CourseDetail />} />

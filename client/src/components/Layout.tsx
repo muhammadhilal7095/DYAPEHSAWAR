@@ -8,8 +8,10 @@ import { useAuth } from '../lib/auth';
 import { api, fileUrl } from '../lib/api';
 import { cx } from './ui';
 import { ACTIVITY_PERMS, GlobalSearch } from './GlobalSearch';
+import { REPORT_TABS } from '../pages/daamr/ReportsHub';
 
-interface NavItem { to: string; label: string; icon: ReactNode; perms?: string[]; end?: boolean }
+/** `also`: other paths that count as this item (e.g. the tabs of a hub); `more`: listed under the group's collapsible “More”. */
+interface NavItem { to: string; label: string; icon: ReactNode; perms?: string[]; end?: boolean; also?: string[]; more?: boolean }
 interface NavGroup { title: string; icon: ReactNode; items: NavItem[] }
 
 const I = (C: any) => <C className="size-4 shrink-0" aria-hidden />;
@@ -28,15 +30,13 @@ const NAV: NavGroup[] = [
     title: 'Activity Management',
     icon: I(Activity),
     items: [
-      { to: '/daamr', label: 'Dashboard', icon: I(Gauge), end: true, perms: ['daamr.dashboard', 'daamr.request.create', 'daamr.report.create', 'daamr.assign'] },
-      { to: '/daamr/requests/new', label: 'Create Activity', icon: I(FilePlus2), perms: ['daamr.request.create'] },
+      { to: '/daamr/requests/new', label: 'Activity Form', icon: I(FilePlus2), perms: ['daamr.request.create'] },
       { to: '/daamr/requests', label: 'Activities', icon: I(ClipboardList), end: true, perms: ACTIVITY_PERMS },
-      { to: '/courses', label: 'Courses & Daily Reports', icon: I(GraduationCap), perms: ['course.access', 'course.view_all', 'course.view_district', 'course.manage'] },
-      { to: '/daamr/assignments', label: 'My Assignments', icon: I(ListChecks), perms: ['daamr.report.create', 'daamr.assign', 'daamr.request.create'] },
-      { to: '/daamr/reports', label: 'Execution Reports', icon: I(FolderKanban), perms: ['daamr.report.create', 'daamr.report.view_all', 'daamr.report.view_district', 'daamr.dashboard'] },
-      { to: '/daamr/gallery', label: 'Picture Gallery', icon: I(Images), perms: ['daamr.request.create', 'daamr.dashboard'] },
-      { to: '/daamr/summary', label: 'Participation & Budget', icon: I(Wallet), perms: ['daamr.dashboard'] },
-      { to: '/daamr/analytics', label: 'Reports & Analytics', icon: I(BarChart3), perms: ['daamr.dashboard'] },
+      { to: '/daamr/reports', label: 'Reports', icon: I(BarChart3), also: REPORT_TABS.map((t) => t.to), perms: REPORT_TABS.flatMap((t) => t.perms) },
+      { to: '/daamr', label: 'Dashboard', icon: I(Gauge), end: true, more: true, perms: ['daamr.dashboard', 'daamr.request.create', 'daamr.report.create', 'daamr.assign'] },
+      { to: '/courses', label: 'Courses & Daily Reports', icon: I(GraduationCap), more: true, perms: ['course.access', 'course.view_all', 'course.view_district', 'course.manage'] },
+      { to: '/daamr/assignments', label: 'My Assignments', icon: I(ListChecks), more: true, perms: ['daamr.report.create', 'daamr.assign', 'daamr.request.create'] },
+      { to: '/daamr/gallery', label: 'Picture Gallery', icon: I(Images), more: true, perms: ['daamr.request.create', 'daamr.dashboard'] },
     ],
   },
   {
@@ -97,14 +97,25 @@ function Brand({ compact }: { compact?: boolean }) {
 /** Group that contains the current page (longest matching link wins). */
 function activeGroupOf(groups: NavGroup[], path: string) {
   let best: { g: string; len: number } | null = null;
-  for (const g of groups) for (const i of g.items) {
-    const hit = i.end ? path === i.to : path === i.to || path.startsWith(i.to.endsWith('/') ? i.to : `${i.to}/`);
-    if (hit && (!best || i.to.length > best.len)) best = { g: g.title, len: i.to.length };
+  for (const g of groups) for (const i of g.items) for (const to of [i.to, ...(i.also ?? [])]) {
+    const end = i.end || to !== i.to;
+    const hit = end ? path === to : path === to || path.startsWith(to.endsWith('/') ? to : `${to}/`);
+    if (hit && (!best || to.length > best.len)) best = { g: g.title, len: to.length };
   }
   return best?.g ?? null;
 }
 
 const NAV_STATE_KEY = 'dya.nav.open';
+
+/** True when the page is one of the item's extra paths (`also`), e.g. a tab of the Reports hub. */
+function isItemActive(i: NavItem, path: string) {
+  return (i.also ?? []).some((to) => path === to);
+}
+
+/** True when the page belongs to the item (its own link, sub-pages unless `end`, or an `also` path). */
+function matchesItem(i: NavItem, path: string) {
+  return (i.end ? path === i.to : path === i.to || path.startsWith(`${i.to}/`)) || isItemActive(i, path);
+}
 
 function CountPill({ n }: { n: number }) {
   return <span className="tabular rounded-full bg-amber-400 px-1.5 py-px text-[10px] font-bold leading-4 text-amber-950">{n > 99 ? '99+' : n}</span>;
@@ -151,31 +162,49 @@ function Sidebar({ onNavigate, counts }: { onNavigate?: () => void; counts: Reco
                   <ChevronDown className={cx('size-3.5 text-white/40 transition group-hover:text-white/70', isOpen ? '' : '-rotate-90')} aria-hidden />
                 </button>
               )}
-              {isOpen && (
-                <ul className={cx('space-y-px', !fixed && 'ml-[23px] mt-1 border-l border-white/10 pl-2')}>
-                  {g.items.map((i) => (
-                    <li key={i.to}>
-                      <NavLink
-                        to={i.to}
-                        end={i.end}
-                        onClick={onNavigate}
-                        className={({ isActive }) =>
-                          cx(
-                            'relative flex items-center gap-2.5 rounded-md px-3 py-[7px] text-[13px] transition',
-                            isActive
-                              ? cx('bg-white/[0.12] font-medium text-white before:absolute before:inset-y-1.5 before:w-[3px] before:rounded-full before:bg-emerald-300', fixed ? 'before:left-0' : 'before:-left-[9px]')
-                              : 'text-white/70 hover:bg-white/[0.06] hover:text-white',
-                          )
-                        }
-                      >
-                        <span className="opacity-90">{i.icon}</span>
-                        <span className="flex-1 truncate">{i.label}</span>
-                        {(counts[i.to] ?? 0) > 0 && <CountPill n={counts[i.to]} />}
-                      </NavLink>
-                    </li>
-                  ))}
-                </ul>
-              )}
+              {isOpen && (() => {
+                const main = g.items.filter((i) => !i.more);
+                const more = g.items.filter((i) => i.more);
+                const moreKey = `${g.title}:more`;
+                const moreActive = more.some((i) => matchesItem(i, loc.pathname));
+                const moreOpen = moreActive || open[moreKey] === true;
+                const link = (i: NavItem) => (
+                  <li key={i.to}>
+                    <NavLink
+                      to={i.to}
+                      end={i.end}
+                      onClick={onNavigate}
+                      className={({ isActive }) =>
+                        cx(
+                          'relative flex items-center gap-2.5 rounded-md px-3 py-[7px] text-[13px] transition',
+                          isActive || isItemActive(i, loc.pathname)
+                            ? cx('bg-white/[0.12] font-medium text-white before:absolute before:inset-y-1.5 before:w-[3px] before:rounded-full before:bg-emerald-300', fixed ? 'before:left-0' : 'before:-left-[9px]')
+                            : 'text-white/70 hover:bg-white/[0.06] hover:text-white',
+                        )
+                      }
+                    >
+                      <span className="opacity-90">{i.icon}</span>
+                      <span className="flex-1 truncate">{i.label}</span>
+                      {(counts[i.to] ?? 0) > 0 && <CountPill n={counts[i.to]} />}
+                    </NavLink>
+                  </li>
+                );
+                return (
+                  <ul className={cx('space-y-px', !fixed && 'ml-[23px] mt-1 border-l border-white/10 pl-2')}>
+                    {main.map(link)}
+                    {more.length > 0 && (
+                      <li>
+                        <button type="button" onClick={() => !moreActive && toggle(moreKey, moreOpen)} aria-expanded={moreOpen}
+                          className="mt-1 flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-[11px] font-semibold uppercase tracking-wider text-white/45 transition hover:text-white/75">
+                          <span className="flex-1">More</span>
+                          <ChevronDown className={cx('size-3 transition', moreOpen ? '' : '-rotate-90')} aria-hidden />
+                        </button>
+                        {moreOpen && <ul className="space-y-px">{more.map(link)}</ul>}
+                      </li>
+                    )}
+                  </ul>
+                );
+              })()}
             </div>
           );
         })}
@@ -246,6 +275,8 @@ function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void 
   useEffect(() => { if (open) { setQ(''); setSel(0); } }, [open]);
   if (!open) return null;
   const pages = NAV.flatMap((g) => g.items.filter((i) => !i.perms || can(...i.perms)).map((i) => ({ to: i.to, label: i.label, group: g.title, icon: i.icon })));
+  const reportTabs = REPORT_TABS.filter((t) => can(...t.perms)).map((t) => ({ to: t.to, label: t.label, group: 'Activity Management', icon: <t.icon className="size-4 shrink-0" aria-hidden /> }));
+  pages.push(...reportTabs.filter((t) => !pages.some((x) => x.to === t.to && x.label === t.label)));
   const all = [...create.map((c) => ({ ...c, group: 'Create' })), ...pages];
   const term = q.trim().toLowerCase();
   const hits = (term ? all.filter((x) => `${x.label} ${x.group}`.toLowerCase().includes(term)) : all).slice(0, 12);
