@@ -59,7 +59,7 @@ function run(cmd, cwd, env) {
   return new Promise((resolve, reject) => {
     log += `\n$ ${cmd}\n`;
     const p = spawn(cmd, { cwd, shell: true, env });
-    const out = (d) => { process.stdout.write(d); log += d; };
+    const out = (d) => { process.stdout.write(d); log += d; try { fs.appendFileSync(progressFile, d); } catch {} };
     p.stdout.on('data', out);
     p.stderr.on('data', out);
     p.on('error', reject);
@@ -67,19 +67,38 @@ function run(cmd, cwd, env) {
   });
 }
 
-// The host may start several copies of this file at once; only the one holding the lock
-// installs/builds/migrates, the others wait for it. A lock older than 30 minutes is stale.
+// The host may start several copies of this file at once (and stop any of them at any time);
+// only the one holding the lock installs/builds/migrates, the others wait and show its progress.
+// The holder refreshes the lock every 15 s; a lock whose holder is gone, or that has not been
+// refreshed for 90 s, is taken over.
 const lockDir = path.join(__dirname, '.startup-lock');
+const progressFile = path.join(__dirname, '.startup.log');
+let heartbeat;
+function holderGone() {
+  try {
+    if (Date.now() - fs.statSync(lockDir).mtimeMs > 90_000) return true;
+    const pid = Number(fs.readFileSync(path.join(lockDir, 'pid'), 'utf8'));
+    if (pid) process.kill(pid, 0);
+    return false;
+  } catch (e) {
+    return e.code === 'ESRCH';
+  }
+}
 function tryLock() {
   try {
     fs.mkdirSync(lockDir);
-    return true;
   } catch {
-    try {
-      if (Date.now() - fs.statSync(lockDir).mtimeMs > 30 * 60_000) fs.rmSync(lockDir, { recursive: true, force: true });
-    } catch {}
+    if (holderGone()) fs.rmSync(lockDir, { recursive: true, force: true });
     return false;
   }
+  fs.writeFileSync(path.join(lockDir, 'pid'), String(process.pid));
+  heartbeat = setInterval(() => { try { const t = new Date(); fs.utimesSync(lockDir, t, t); } catch {} }, 15_000);
+  fs.writeFileSync(progressFile, '');
+  return true;
+}
+function unlock() {
+  clearInterval(heartbeat);
+  fs.rmSync(lockDir, { recursive: true, force: true });
 }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const isBuilt = () => ['server/dist/index.js', 'client/dist/index.html'].every((f) => fs.existsSync(path.join(__dirname, f)));
@@ -92,25 +111,38 @@ const isBuilt = () => ['server/dist/index.js', 'client/dist/index.html'].every((
     const serverDir = path.join(__dirname, 'server');
     while (!(locked = tryLock())) {
       status = 'Another start-up is building the portal — this page refreshes itself.';
+      try { log = fs.readFileSync(progressFile, 'utf8'); } catch {}
       await sleep(5000);
     }
+    log = '';
     if (!isBuilt()) {
       status = 'Building the portal (first start, takes a few minutes) — this page refreshes itself.';
       // `npm ci` starts from a clean node_modules, so a half-finished earlier install cannot break it.
-      await run('npm ci --include=dev --no-audit --no-fund', serverDir, env);
-      await run('npm ci --include=dev --no-audit --no-fund', path.join(__dirname, 'client'), env);
+      // Retried: an install left running by a start-up the host stopped can still be finishing.
+      const install = async (dir) => {
+        for (let attempt = 1; ; attempt++) {
+          try {
+            return await run('npm ci --include=dev --no-audit --no-fund', dir, env);
+          } catch (e) {
+            if (attempt === 3) throw e;
+            await sleep(60_000);
+          }
+        }
+      };
+      await install(serverDir);
+      await install(path.join(__dirname, 'client'));
       await run('npm run build', serverDir, env);
       await run('npm run build', path.join(__dirname, 'client'), env);
     }
     status = 'Preparing the database…';
     await run('npx prisma migrate deploy && npx tsx prisma/seed.ts --if-empty', serverDir, env);
-    fs.rmSync(lockDir, { recursive: true, force: true });
+    unlock();
     locked = false;
     process.chdir(serverDir);
     handOverToApp();
     await import(pathToFileURL(path.join(serverDir, 'dist/index.js')).href);
   } catch (e) {
-    if (locked) fs.rmSync(lockDir, { recursive: true, force: true });
+    if (locked) unlock();
     status = `Start-up failed: ${e.message}`;
     console.error(e);
   }
