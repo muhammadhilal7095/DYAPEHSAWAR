@@ -1,12 +1,13 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router';
 import {
-  Activity, ArrowRight, BedDouble, BellRing, CalendarCheck, CalendarDays, ClipboardCheck, ClipboardList, CornerUpLeft, FilePlus2, GraduationCap, Hotel, Inbox, Landmark,
-  ListChecks, Map, Send, Stamp,
+  Activity, ArrowRight, BedDouble, BellRing, CalendarCheck, CheckCircle2, CalendarDays, ClipboardCheck, ClipboardList, CornerUpLeft, FilePlus2, GraduationCap, Hotel, Inbox, Landmark,
+  ListChecks, Map, PlayCircle, Send, Stamp,
 } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { useApi } from '../lib/hooks';
-import { fmtDate, fmtDateTime } from '../lib/format';
+import { qs } from '../lib/api';
+import { fmtDate, fmtDateTime, fmtNum } from '../lib/format';
 import { Badge, Card, Stat, cx } from '../components/ui';
 
 function greeting() {
@@ -23,6 +24,8 @@ export default function Home() {
   const { data: mine } = useApi(daamr ? '/api/daamr/assignments?status=open&pageSize=5' : null);
   const { data: cd } = useApi(courses ? '/api/courses/dashboard?mine=1' : null);
   const { data: notes } = useApi('/api/admin/notifications?pageSize=5');
+  const activityStats = can('daamr.dashboard', 'daamr.request.create', 'daamr.report.create', 'daamr.assign');
+  const { data: ad } = useApi(activityStats ? '/api/daamr/dashboard/activities' : null);
 
   const actions = [
     can('daamr.request.create') && { to: '/daamr/requests/new', label: 'Create activity', hint: 'Event or course proposal', icon: <FilePlus2 className="size-5" /> },
@@ -66,6 +69,8 @@ export default function Home() {
           <HeroStat to="/notifications" icon={<BellRing className="size-4" />} label="Unread notifications" value={s?.unread} />
         </div>
       </div>
+
+      {activityStats && <ActivityOverview d={ad} allDistricts={can('daamr.request.view_all')} />}
 
       {actions.length > 0 && (
         <section aria-labelledby="qa" className="mb-6">
@@ -174,6 +179,75 @@ export default function Home() {
         </section>
       )}
     </>
+  );
+}
+
+const activityList = (extra: Record<string, string>) => `/daamr/requests${qs({ scope: 'all', dateField: 'start', ...extra })}`;
+
+function ActivityOverview({ d, allDistricts }: { d: any; allDistricts: boolean }) {
+  const rows: any[] = d?.charts?.districtStatus ?? [];
+  const tiles = [
+    { label: 'Total activities', value: d?.cards.total, hint: 'Submitted, all stages (drafts excluded)', icon: <ClipboardList className="size-6" />, to: activityList({}), tone: 'bg-brand-50 text-brand ring-brand-100' },
+    { label: 'Running activities', value: d?.cards.inProgress, hint: 'Approved and currently being executed', icon: <PlayCircle className="size-6" />, to: activityList({ lifecycle: 'IN_PROGRESS' }), tone: 'bg-blue-50 text-blue-700 ring-blue-100' },
+    { label: 'Completed activities', value: d?.cards.completed, hint: 'Execution report verified', icon: <CheckCircle2 className="size-6" />, to: activityList({ lifecycle: 'COMPLETED' }), tone: 'bg-emerald-50 text-emerald-700 ring-emerald-100' },
+  ];
+  return (
+    <section aria-labelledby="act-overview" className="mb-6">
+      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+        <h2 id="act-overview" className="text-sm font-semibold uppercase tracking-wide text-ink-3">
+          Activities — {allDistricts ? 'all districts' : 'districts you can see'}
+        </h2>
+        <Link to="/daamr" className="text-sm font-medium text-brand hover:underline">Activity dashboard</Link>
+      </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        {tiles.map((t) => (
+          <Link key={t.label} to={t.to} className="group flex items-center gap-4 rounded-xl border border-line bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+            <span className={cx('grid size-12 shrink-0 place-items-center rounded-xl ring-1', t.tone)}>{t.icon}</span>
+            <span className="min-w-0">
+              <span className="block text-sm text-ink-2">{t.label}</span>
+              <span className="tabular block text-3xl font-semibold text-ink">{t.value == null ? '—' : fmtNum(t.value)}</span>
+              <span className="block truncate text-xs text-ink-3">{t.hint}</span>
+            </span>
+          </Link>
+        ))}
+      </div>
+      {rows.length > 0 && (
+        <Card title="By district" className="mt-3" bodyClass="p-0">
+          <div className="max-h-80 overflow-auto">
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-gray-50 text-left text-xs uppercase tracking-wide text-ink-3">
+                <tr>
+                  <th className="px-3 py-2 sm:px-4 font-medium"><span className="sm:hidden">District</span><span className="hidden sm:inline">District / HQ</span></th>
+                  <th className="px-3 py-2 sm:px-4 text-right font-medium">Total</th>
+                  <th className="px-3 py-2 sm:px-4 text-right font-medium"><span className="sm:hidden">Run.</span><span className="hidden sm:inline">Running</span></th>
+                  <th className="px-3 py-2 sm:px-4 text-right font-medium"><span className="sm:hidden">Done</span><span className="hidden sm:inline">Completed</span></th>
+                  <th className="hidden px-3 py-2 sm:px-4 font-medium sm:table-cell">Completion</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-line">
+                {rows.map((r) => {
+                  const pct = r.total ? Math.round((r.completed / r.total) * 100) : 0;
+                  return (
+                    <tr key={r.id} className="hover:bg-gray-50">
+                      <td className="px-3 py-2 sm:px-4 font-medium"><Link to={activityList({ districtId: r.id })} className="hover:text-brand hover:underline">{r.name}</Link></td>
+                      <td className="tabular px-3 py-2 sm:px-4 text-right">{fmtNum(r.total)}</td>
+                      <td className="tabular px-3 py-2 sm:px-4 text-right text-blue-700">{fmtNum(r.inProgress)}</td>
+                      <td className="tabular px-3 py-2 sm:px-4 text-right text-emerald-700">{fmtNum(r.completed)}</td>
+                      <td className="hidden px-3 py-2 sm:px-4 sm:table-cell">
+                        <span className="flex items-center gap-2">
+                          <span className="h-1.5 w-24 overflow-hidden rounded-full bg-gray-100"><span className="block h-full rounded-full bg-emerald-500" style={{ width: `${pct}%` }} /></span>
+                          <span className="tabular text-xs text-ink-3">{pct}%</span>
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+    </section>
   );
 }
 

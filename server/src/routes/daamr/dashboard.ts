@@ -181,6 +181,13 @@ export async function activityDashboardData(user: AuthUser, q: any) {
   const monthly: Record<string, number> = {};
   for (const r of rows) monthly[r.startDate.toISOString().slice(0, 7)] = (monthly[r.startDate.toISOString().slice(0, 7)] ?? 0) + 1;
   const byStatusMap = Object.fromEntries(tally((r) => r.lifecycle).map((x) => [x.name, x.value]));
+  const perDistrict: Record<string, { name: string; total: number; inProgress: number; completed: number }> = {};
+  for (const r of rows) {
+    const d = (perDistrict[r.districtId] ??= { name: dName.get(r.districtId) ?? '—', total: 0, inProgress: 0, completed: 0 });
+    d.total++;
+    if (r.lifecycle === 'IN_PROGRESS') d.inProgress++;
+    if (r.lifecycle === 'COMPLETED') d.completed++;
+  }
 
   const now = new Date();
   const [myOpenTasks, myOverdueTasks, awaitingMyReview] = await Promise.all([
@@ -195,6 +202,7 @@ export async function activityDashboardData(user: AuthUser, q: any) {
     charts: {
       monthly: Object.entries(monthly).sort().map(([month, value]) => ({ month, value })),
       byDistrict: tally((r) => dName.get(r.districtId) ?? '—'),
+      districtStatus: Object.entries(perDistrict).map(([id, v]) => ({ id, ...v })).sort((a, b) => b.total - a.total || a.name.localeCompare(b.name)),
       byCategory: tally((r) => (r.category ? cName.get(r.category) ?? humanize(r.category) : 'Uncategorised')),
       byDepartment: tally((r) => (r.departmentId ? depName.get(r.departmentId) ?? '—' : 'Not specified')),
       byStatus: LIFECYCLE.filter((l) => l !== 'DRAFT' && byStatusMap[l]).map((l) => ({ key: l, name: humanize(l), value: byStatusMap[l] })),
