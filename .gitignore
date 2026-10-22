@@ -9,3 +9,4 @@ logs
 server/storage/backups
 *.sqlite
 .DS_Store
+.startup-lock

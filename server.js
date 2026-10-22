@@ -67,22 +67,50 @@ function run(cmd, cwd, env) {
   });
 }
 
+// The host may start several copies of this file at once; only the one holding the lock
+// installs/builds/migrates, the others wait for it. A lock older than 30 minutes is stale.
+const lockDir = path.join(__dirname, '.startup-lock');
+function tryLock() {
+  try {
+    fs.mkdirSync(lockDir);
+    return true;
+  } catch {
+    try {
+      if (Date.now() - fs.statSync(lockDir).mtimeMs > 30 * 60_000) fs.rmSync(lockDir, { recursive: true, force: true });
+    } catch {}
+    return false;
+  }
+}
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const isBuilt = () => ['server/dist/index.js', 'client/dist/index.html'].every((f) => fs.existsSync(path.join(__dirname, f)));
+
 (async () => {
+  let locked = false;
   try {
     if (!process.env.DATA_ENCRYPTION_KEY && process.env.NODE_ENV === 'production') throw new Error('DATA_ENCRYPTION_KEY environment variable is not set.');
     const env = { ...process.env, PATH: toolPath() };
-    const built = ['server/dist/index.js', 'client/dist/index.html'].every((f) => fs.existsSync(path.join(__dirname, f)));
-    if (!built) {
+    const serverDir = path.join(__dirname, 'server');
+    while (!(locked = tryLock())) {
+      status = 'Another start-up is building the portal — this page refreshes itself.';
+      await sleep(5000);
+    }
+    if (!isBuilt()) {
       status = 'Building the portal (first start, takes a few minutes) — this page refreshes itself.';
-      await run('npm run build', __dirname, env);
+      // `npm ci` starts from a clean node_modules, so a half-finished earlier install cannot break it.
+      await run('npm ci --include=dev --no-audit --no-fund', serverDir, env);
+      await run('npm ci --include=dev --no-audit --no-fund', path.join(__dirname, 'client'), env);
+      await run('npm run build', serverDir, env);
+      await run('npm run build', path.join(__dirname, 'client'), env);
     }
     status = 'Preparing the database…';
-    const serverDir = path.join(__dirname, 'server');
     await run('npx prisma migrate deploy && npx tsx prisma/seed.ts --if-empty', serverDir, env);
+    fs.rmSync(lockDir, { recursive: true, force: true });
+    locked = false;
     process.chdir(serverDir);
     handOverToApp();
     await import(pathToFileURL(path.join(serverDir, 'dist/index.js')).href);
   } catch (e) {
+    if (locked) fs.rmSync(lockDir, { recursive: true, force: true });
     status = `Start-up failed: ${e.message}`;
     console.error(e);
   }
