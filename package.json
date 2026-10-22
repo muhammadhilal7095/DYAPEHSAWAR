@@ -6,12 +6,11 @@
   "description": "Directorate of Youth Affairs — DAAMR activities, Youth Hostels and Jawan Markaz monitoring portal",
   "scripts": {
     "install:all": "npm --prefix server install --include=dev && npm --prefix client install --include=dev",
-    "postinstall": "npm run install:all",
     "setup": "npm --prefix server run setup",
     "demo": "npm --prefix server run db:seed:demo",
     "dev:server": "npm --prefix server run dev",
     "dev:client": "npm --prefix client run dev",
-    "build": "npm --prefix server run build && npm --prefix client run build",
+    "build": "npm run install:all && npm --prefix server run build && npm --prefix client run build",
     "start": "node server.js",
     "test": "npm --prefix server test"
   }
