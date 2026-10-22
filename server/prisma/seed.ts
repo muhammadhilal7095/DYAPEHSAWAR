@@ -98,6 +98,8 @@ const USERS: { email: string; name: string; designation: string; district: strin
 ];
 
 async function main() {
+  // --if-empty: used on every production start; seeds only a brand-new database.
+  if (process.argv.includes('--if-empty') && (await prisma.user.count())) return;
   // Roles
   const roleId: Record<string, string> = {};
   for (const r of ROLES) {
