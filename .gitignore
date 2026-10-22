@@ -11,3 +11,4 @@ server/storage/backups
 .DS_Store
 .startup-lock
 .startup.log
+*.tsbuildinfo
