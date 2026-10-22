@@ -111,6 +111,10 @@ const isBuilt = () => ['server/dist/index.js', 'client/dist/index.html'].every((
     // Rust scanner, esbuild, libuv) otherwise start one per CPU core and crash with EAGAIN.
     const env = { ...process.env, PATH: toolPath(), RAYON_NUM_THREADS: '1', GOMAXPROCS: '1', UV_THREADPOOL_SIZE: '2' };
     const serverDir = path.join(__dirname, 'server');
+    // Data kept outside the deployment folder (absolute DATABASE_URL / UPLOAD_DIR): create its folders.
+    const dbFile = (process.env.DATABASE_URL || '').match(/^file:(\/.+)$/)?.[1];
+    if (dbFile) fs.mkdirSync(path.dirname(dbFile), { recursive: true });
+    if (process.env.UPLOAD_DIR && path.isAbsolute(process.env.UPLOAD_DIR)) fs.mkdirSync(process.env.UPLOAD_DIR, { recursive: true });
     while (!(locked = tryLock())) {
       status = 'Another start-up is building the portal — this page refreshes itself.';
       try { log = fs.readFileSync(progressFile, 'utf8'); } catch {}
