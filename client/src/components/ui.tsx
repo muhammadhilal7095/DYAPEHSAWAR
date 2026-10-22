@@ -150,11 +150,11 @@ export function PageHeader({ title, subtitle, actions, back }: { title: ReactNod
 
 export function KV({ items, cols = 2 }: { items: [ReactNode, ReactNode][]; cols?: 1 | 2 | 3 }) {
   return (
-    <dl className={cx('grid grid-cols-1 gap-x-6 gap-y-3', cols === 3 ? 'sm:grid-cols-2 lg:grid-cols-3' : cols === 2 ? 'sm:grid-cols-2' : '')}>
+    <dl className={cx('grid gap-x-4 gap-y-3 sm:gap-x-6', cols === 3 ? 'grid-cols-2 lg:grid-cols-3' : cols === 2 ? 'grid-cols-2' : 'grid-cols-1')}>
       {items.map(([k, v], i) => (
         <div key={i} className="min-w-0">
-          <dt className="text-xs font-medium uppercase tracking-wide text-ink-3">{k}</dt>
-          <dd className="mt-0.5 break-words text-sm text-ink">{v === null || v === undefined || v === '' ? '—' : v}</dd>
+          <dt className="text-[11px] font-semibold uppercase tracking-wider text-ink-3">{k}</dt>
+          <dd className="mt-0.5 break-words text-sm text-ink [overflow-wrap:anywhere]">{v === null || v === undefined || v === '' ? '—' : v}</dd>
         </div>
       ))}
     </dl>
@@ -243,6 +243,116 @@ export function Stat({ label, value, hint, to, icon, tone }: { label: string; va
     </div>
   );
   return to ? <Link to={to} className="block focus-visible:rounded-xl">{body}</Link> : body;
+}
+
+// ───────── Executive KPI tile, stat strip and detail header ─────────
+type KpiTone = 'brand' | 'blue' | 'green' | 'amber' | 'red' | 'gray' | 'violet';
+const kpiTone: Record<KpiTone, { accent: string; chip: string; icon: string }> = {
+  brand: { accent: 'border-t-brand', chip: 'bg-brand-50 text-brand', icon: 'text-brand' },
+  blue: { accent: 'border-t-blue-600', chip: 'bg-blue-50 text-blue-700', icon: 'text-blue-700' },
+  green: { accent: 'border-t-emerald-600', chip: 'bg-emerald-50 text-emerald-700', icon: 'text-emerald-700' },
+  amber: { accent: 'border-t-amber-500', chip: 'bg-amber-50 text-amber-700', icon: 'text-amber-700' },
+  red: { accent: 'border-t-red-600', chip: 'bg-red-50 text-red-700', icon: 'text-red-700' },
+  gray: { accent: 'border-t-gray-300', chip: 'bg-gray-100 text-gray-600', icon: 'text-gray-600' },
+  violet: { accent: 'border-t-violet-600', chip: 'bg-violet-50 text-violet-700', icon: 'text-violet-700' },
+};
+
+/** Headline figure with a coloured top edge; links to the matching list when `to` is given. */
+export function KpiTile({ label, value, note, to, icon, tone = 'brand', title }: { label: string; value: ReactNode; note?: ReactNode; to?: string; icon?: ReactNode; tone?: KpiTone; title?: string }) {
+  const t = kpiTone[tone];
+  const body = (
+    <>
+      <span className="flex items-start justify-between gap-2">
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-3">{label}</span>
+        {icon && <span className={cx('rounded-lg p-1.5', t.chip)}>{icon}</span>}
+      </span>
+      <span className="tabular mt-1 text-3xl font-bold tracking-tight text-ink">{value}</span>
+      {note && <span className="mt-auto pt-1 text-xs text-ink-3">{note}</span>}
+    </>
+  );
+  const cls = cx('group flex h-full flex-col rounded-xl border border-t-4 border-line bg-white p-4 shadow-sm transition', to && 'hover:shadow-md', t.accent);
+  return to ? <Link to={to} title={title} className={cls}>{body}</Link> : <div title={title} className={cls}>{body}</div>;
+}
+
+export interface StripItem { key?: string; label: string; value: ReactNode; note?: ReactNode; icon?: ReactNode; tone?: KpiTone; to?: string; onClick?: () => void; active?: boolean; title?: string }
+
+/** A row of related figures in one bordered panel (stages, secondary metrics); items may link or act as filters. */
+export function StatStrip({ title, subtitle, items, arrows }: { title?: string; subtitle?: ReactNode; items: StripItem[]; arrows?: boolean }) {
+  const cols = items.length >= 5 ? 'lg:grid-cols-5' : items.length === 4 ? 'lg:grid-cols-4' : 'lg:grid-cols-3';
+  return (
+    <section className="overflow-hidden rounded-xl border border-line bg-white shadow-sm">
+      {(title || subtitle) && (
+        <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-line px-4 py-2.5">
+          {title && <h2 className="text-sm font-semibold text-ink">{title}</h2>}
+          {subtitle && <p className="text-xs text-ink-3">{subtitle}</p>}
+        </div>
+      )}
+      <ol className={cx('grid grid-cols-2 sm:grid-cols-3', cols)}>
+        {items.map((x, i) => {
+          const inner = (
+            <>
+              <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase leading-tight tracking-wider text-ink-3">
+                {x.icon && <span className={cx('shrink-0', kpiTone[x.tone ?? 'gray'].icon)}>{x.icon}</span>}{x.label}
+              </span>
+              <span className="tabular mt-1 block text-2xl font-bold tracking-tight text-ink">{x.value}</span>
+              {x.note && <span className="block text-xs text-ink-3">{x.note}</span>}
+            </>
+          );
+          const cls = cx('block h-full px-4 py-3.5 text-left transition', (x.to || x.onClick) && 'hover:bg-gray-50', x.active && 'bg-brand-50/70 shadow-[inset_0_-2px_0_var(--brand)]');
+          return (
+            <li key={x.key ?? x.label} title={x.title} className={cx('relative border-b border-line sm:border-r lg:border-b-0', i === items.length - 1 && items.length % 2 === 1 && 'max-sm:col-span-2')}>
+              {x.to ? <Link to={x.to} className={cls}>{inner}</Link> : x.onClick ? <button type="button" onClick={x.onClick} aria-pressed={x.active} className={cx(cls, 'w-full')}>{inner}</button> : <div className={cls}>{inner}</div>}
+              {arrows && i < items.length - 1 && <ChevronRight className="absolute -right-2.5 top-1/2 z-10 hidden size-5 -translate-y-1/2 rounded-full bg-white text-ink-3 ring-1 ring-line lg:block" aria-hidden />}
+            </li>
+          );
+        })}
+      </ol>
+    </section>
+  );
+}
+
+/** Branded header band for record pages: back link, reference, title, badges, actions — then optional facts and footer. */
+export function DetailHeader({ back, backLabel, reference, title, badges, actions, thumb, children }: { back?: string; backLabel?: string; reference?: ReactNode; title: ReactNode; badges?: ReactNode; actions?: ReactNode; thumb?: string; children?: ReactNode }) {
+  return (
+    <div className="mb-4 overflow-hidden rounded-2xl border border-line bg-white shadow-sm">
+      <div className="relative bg-gradient-to-br from-brand-700 via-brand-800 to-[#062a1a] px-5 py-5 text-white sm:px-6">
+        <div aria-hidden className="pointer-events-none absolute inset-0 opacity-[0.06]" style={{ backgroundImage: 'radial-gradient(circle, white 1px, transparent 1px)', backgroundSize: '20px 20px' }} />
+        <div className="relative flex flex-wrap items-start justify-between gap-4">
+          <div className="flex min-w-0 flex-1 items-start gap-4 max-sm:basis-full">
+            {thumb && <img src={thumb} alt="" className="hidden size-24 shrink-0 rounded-xl object-cover shadow-lg ring-2 ring-white/20 sm:block" />}
+            <div className="min-w-0">
+              {back && <Link to={back} className="no-print inline-flex items-center gap-1 text-xs font-medium text-white/65 hover:text-white">← {backLabel ?? 'Back'}</Link>}
+              {reference && <p className="mt-2 font-mono text-xs tracking-wide text-emerald-200/90">{reference}</p>}
+              <h1 className="mt-0.5 text-xl font-semibold leading-snug tracking-tight sm:text-2xl">{title}</h1>
+              {badges && <div className="mt-3 flex flex-wrap items-center gap-2">{badges}</div>}
+            </div>
+          </div>
+          {actions && <div className="no-print flex flex-wrap gap-2">{actions}</div>}
+        </div>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/** Grid of labelled facts used under a DetailHeader (2 columns on phones, 4 on wide screens). */
+export function FactGrid({ items }: { items: { icon?: ReactNode; label: string; value: ReactNode }[] }) {
+  return (
+    <dl className="grid grid-cols-2 border-b border-line xl:grid-cols-4 [&>div]:border-b [&>div]:border-line [&>div:nth-child(odd)]:border-r xl:[&>div]:border-r xl:[&>div:nth-child(4n)]:border-r-0">
+      {items.map((f) => {
+        const empty = f.value === null || f.value === undefined || f.value === '' || f.value === '—';
+        return (
+          <div key={f.label} className="-mb-px flex min-w-0 gap-3 px-4 py-3 sm:px-5 sm:py-3.5">
+            {f.icon && <span className="mt-0.5 hidden size-8 shrink-0 place-items-center rounded-lg bg-gray-50 text-ink-3 ring-1 ring-line sm:grid">{f.icon}</span>}
+            <div className="min-w-0">
+              <dt className="text-[11px] font-semibold uppercase tracking-wider text-ink-3">{f.label}</dt>
+              <dd className={cx('mt-0.5 line-clamp-3 break-words text-sm', empty ? 'italic text-ink-3' : 'font-medium text-ink')}>{empty ? 'Not set' : f.value}</dd>
+            </div>
+          </div>
+        );
+      })}
+    </dl>
+  );
 }
 
 // ───────── Tabs ─────────

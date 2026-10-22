@@ -1,19 +1,19 @@
 import { Link } from 'react-router';
-import { ClipboardCheck, Plus, ShieldAlert } from 'lucide-react';
+import { AlarmClock, AlertTriangle, Award, BadgeCheck, Building2, CalendarClock, CheckCircle2, CircleAlert, ClipboardCheck, Clock, CornerUpLeft, Hourglass, Landmark, Plus, ShieldAlert, Wrench } from 'lucide-react';
 import { qs } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { useApi, useCached, useDistricts, useQueryState } from '../../lib/hooks';
 import { addDays, fmtNum, humanize, todayISO } from '../../lib/format';
-import { Card, ErrorBox, LinkButton, PageHeader, Spinner } from '../../components/ui';
+import { ErrorBox, KpiTile, LinkButton, PageHeader, Spinner, StatStrip } from '../../components/ui';
 import { ExportMenu, MiniDate } from '../../components/DataTable';
 
 export function DistrictAssetSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const districts = useDistricts();
   const assets = useCached<any>('/api/jm/assets')?.rows ?? [];
   return (
-    <label className="flex flex-col gap-1 text-xs font-medium text-ink-3">
-      Select District / Asset
-      <select className="min-w-60 rounded-lg border border-line bg-white px-2.5 py-2 text-sm text-ink shadow-sm focus:border-brand focus:outline-none" value={value} onChange={(e) => onChange(e.target.value)}>
+    <label className="flex w-full flex-col gap-1 text-xs font-medium text-ink-3 sm:w-auto">
+      District / asset
+      <select className="w-full rounded-lg sm:min-w-60 border border-line bg-white px-2.5 py-2 text-sm text-ink shadow-sm focus:border-brand focus:outline-none" value={value} onChange={(e) => onChange(e.target.value)}>
         <option value="all">All</option>
         <optgroup label="Districts / HQ">{districts.filter((d) => assets.some((a: any) => a.districtId === d.id)).map((d) => <option key={d.id} value={`district:${d.id}`}>{d.name}</option>)}</optgroup>
         <optgroup label="Jawan Markaz assets">{assets.map((a: any) => <option key={a.id} value={`asset:${a.id}`}>{a.name}</option>)}</optgroup>
@@ -35,69 +35,54 @@ export default function JmDashboard() {
   const { data: d, loading, error } = useApi(`/api/jm/dashboard${qs(q)}`);
   const s = d?.summary;
   const reports = (extra: any) => `/jm/reports${qs({ scope: 'all', from: q.from, to: q.to, ...(q.filter.startsWith('asset:') ? { assetId: q.filter.slice(6) } : q.filter.startsWith('district:') ? { districtId: q.filter.slice(9) } : {}), ...extra })}`;
-  const rows: [string, number | undefined, string?, string?][] = s ? [
-    ['Total JMs Reports', s.totalReports, reports({}), 'Distinct submitted reports in the period'],
-    ['On Schedule', s.onSchedule, undefined, 'Distinct assets — latest verified report'],
-    ['Slightly Delayed', s.slightlyDelayed, undefined, 'Distinct assets — latest verified report'],
-    ['Significantly Delayed', s.significantlyDelayed, undefined, 'Distinct assets — latest verified report'],
-    ['Satisfactory Quality', s.satisfactoryQuality, undefined, `Quality rated ${d.rules.satisfactoryQualityValues.map(humanize).join(' / ')}`],
-  ] : [];
-  const extra: [string, number | undefined, string?][] = s ? [
-    ['Reports pending review', s.pendingReview, reports({ status: 'PENDING_REVIEW,UNDER_REVIEW' })],
-    ['Reports approved / verified', s.approved, reports({ status: 'VERIFIED' })],
-    ['Returned for correction', s.returned, reports({ status: 'RETURNED' })],
-    ['Projects in progress', s.projectsInProgress, '/jm/assets'],
-    ['Projects completed', s.projectsCompleted, '/jm/assets?status=COMPLETED'],
-    ['Open issues', s.openIssues, '/jm/registers?tab=issues&status=OPEN,UNDER_REVIEW,ACTION_REQUIRED,IN_PROGRESS'],
-    ['Critical risks', s.criticalRisks, '/jm/registers?tab=risks&level=CRITICAL'],
-    ['Pending corrective actions', s.pendingActions, '/jm/registers?tab=actions&status=OPEN,IN_PROGRESS'],
-    ['Overdue inspections', s.overdueInspections, '/jm/registers?tab=inspections'],
-    ['Inspections due within 7 days', s.inspectionsDueSoon, '/jm/registers?tab=inspections'],
-  ] : [];
+  const pct = (n: number) => (s?.totalReports ? `${Math.round((n / Math.max(1, s.assetsReported)) * 100)}% of assets reported` : 'Latest verified report');
 
   return (
     <>
-      <PageHeader title="Jawan Markaz Monitoring Dashboard" subtitle="Asset status categories count distinct assets using each asset's latest verified report in the period." actions={<>
-        <LinkButton variant="secondary" to="/jm/reports" icon={<ClipboardCheck className="size-4" />}>Monitoring reports</LinkButton>
-        <LinkButton variant="secondary" to="/jm/registers" icon={<ShieldAlert className="size-4" />}>Issues & risks</LinkButton>
-        {can('jm.report.create') && <LinkButton to="/jm/reports/new" icon={<Plus className="size-4" />}>New report</LinkButton>}
-      </>} />
+      <PageHeader
+        title="Jawan Markaz Monitoring Dashboard"
+        subtitle="Asset status counts distinct assets, using each asset's latest verified report in the period."
+        actions={<>
+          {can('jm.export') && <ExportMenu compact label="Export" url={(f) => `/api/jm/dashboard/export${qs({ ...q, format: f })}`} />}
+          {can('jm.report.create') && <LinkButton to="/jm/reports/new" icon={<Plus className="size-4" />}>New report</LinkButton>}
+        </>}
+      />
       <div className="no-print mb-5 flex flex-wrap items-end gap-3 rounded-xl border border-line bg-white p-3 shadow-sm">
-        <MiniDate label="From Date" value={q.from} onChange={(v) => setQ({ from: v })} />
-        <MiniDate label="To Date" value={q.to} onChange={(v) => setQ({ to: v })} />
+        <MiniDate label="From date" value={q.from} onChange={(v) => setQ({ from: v })} />
+        <MiniDate label="To date" value={q.to} onChange={(v) => setQ({ to: v })} />
         <DistrictAssetSelect value={q.filter} onChange={(v) => setQ({ filter: v })} />
-        <div className="ml-auto">{can('jm.export') && <ExportMenu url={(f) => `/api/jm/dashboard/export${qs({ ...q, format: f })}`} />}</div>
+        {d && <p className="ml-auto self-center text-xs text-ink-3 max-sm:w-full">Showing <span className="font-medium text-ink-2">{d.filters.label}</span></p>}
       </div>
       <ErrorBox error={error} />
       {loading && !d ? <Spinner /> : d && (
-        <div className="space-y-5">
-          <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,420px)_1fr]">
-            <Card title="Summary Report" subtitle={d.filters.label} bodyClass="p-0">
-              <table className="w-full text-sm">
-                <thead className="bg-brand text-left text-xs uppercase tracking-wide text-white"><tr><th className="px-4 py-2 font-medium">Metric</th><th className="px-4 py-2 text-right font-medium">Count</th></tr></thead>
-                <tbody className="divide-y divide-line">
-                  {rows.map(([label, v, to, hint]) => (
-                    <tr key={label} className="hover:bg-gray-50">
-                      <td className="px-4 py-2.5">{label}<span className="block text-xs text-ink-3">{hint}</span></td>
-                      <td className="tabular px-4 py-2.5 text-right text-lg font-semibold">{to ? <Link to={to} className="text-brand hover:underline">{fmtNum(v)}</Link> : fmtNum(v)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </Card>
-            <Card title="Additional indicators" bodyClass="p-0">
-              <ul className="grid divide-line sm:grid-cols-2 [&>li]:border-b [&>li]:border-line sm:[&>li:nth-child(odd)]:border-r">
-                {extra.map(([label, v, to]) => (
-                  <li key={label}>
-                    <Link to={to ?? '#'} className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-gray-50">
-                      <span className="text-sm text-ink-2">{label}</span>
-                      <span className="tabular text-lg font-semibold">{fmtNum(v)}</span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </Card>
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+            <KpiTile label="Monitoring reports" value={fmtNum(s.totalReports)} note="Distinct submitted reports" to={reports({})} icon={<ClipboardCheck className="size-5" />} />
+            <KpiTile label="On schedule" value={fmtNum(s.onSchedule)} note={pct(s.onSchedule)} icon={<CheckCircle2 className="size-5" />} tone="green" />
+            <KpiTile label="Slightly delayed" value={fmtNum(s.slightlyDelayed)} note={pct(s.slightlyDelayed)} icon={<Clock className="size-5" />} tone="amber" />
+            <KpiTile label="Significantly delayed" value={fmtNum(s.significantlyDelayed)} note={pct(s.significantlyDelayed)} icon={<AlertTriangle className="size-5" />} tone={s.significantlyDelayed ? 'red' : 'gray'} />
           </div>
+          <div className="grid grid-cols-1 gap-4 2xl:grid-cols-2">
+            <StatStrip title="Reports & quality" items={[
+              { label: 'Satisfactory quality', value: fmtNum(s.satisfactoryQuality), note: d.rules.satisfactoryQualityValues.map(humanize).join(' / '), icon: <Award className="size-4" />, tone: 'blue' },
+              { label: 'Pending review', value: fmtNum(s.pendingReview), icon: <Hourglass className="size-4" />, tone: 'amber', to: reports({ status: 'PENDING_REVIEW,UNDER_REVIEW' }) },
+              { label: 'Verified', value: fmtNum(s.approved), icon: <BadgeCheck className="size-4" />, tone: 'green', to: reports({ status: 'VERIFIED' }) },
+              { label: 'Returned', value: fmtNum(s.returned), note: 'For correction', icon: <CornerUpLeft className="size-4" />, tone: 'red', to: reports({ status: 'RETURNED' }) },
+            ]} />
+            <StatStrip title="Coverage & inspections" items={[
+              { label: 'Assets reported', value: <>{fmtNum(s.assetsReported)}<span className="text-sm font-medium text-ink-3"> / {fmtNum(s.totalAssets)}</span></>, note: 'With a verified report', icon: <Landmark className="size-4" />, tone: 'brand', to: '/jm/assets' },
+              { label: 'Overdue inspections', value: fmtNum(s.overdueInspections), icon: <AlarmClock className="size-4" />, tone: s.overdueInspections ? 'red' : 'gray', to: '/jm/registers?tab=inspections' },
+              { label: 'Due in 7 days', value: fmtNum(s.inspectionsDueSoon), note: 'Upcoming inspections', icon: <CalendarClock className="size-4" />, tone: 'amber', to: '/jm/registers?tab=inspections' },
+              { label: 'Projects completed', value: fmtNum(s.projectsCompleted), note: `${fmtNum(s.projectsInProgress)} in progress`, icon: <Building2 className="size-4" />, tone: 'green', to: '/jm/assets?status=COMPLETED' },
+            ]} />
+          </div>
+          <StatStrip title="Issues, actions & risks" subtitle="Open items from the monitoring registers" items={[
+            { label: 'Open issues', value: fmtNum(s.openIssues), icon: <CircleAlert className="size-4" />, tone: 'amber', to: '/jm/registers?tab=issues&status=OPEN,UNDER_REVIEW,ACTION_REQUIRED,IN_PROGRESS' },
+            { label: 'Critical risks', value: fmtNum(s.criticalRisks), icon: <ShieldAlert className="size-4" />, tone: s.criticalRisks ? 'red' : 'gray', to: '/jm/registers?tab=risks&level=CRITICAL' },
+            { label: 'Pending corrective actions', value: fmtNum(s.pendingActions), icon: <Wrench className="size-4" />, tone: 'blue', to: '/jm/registers?tab=actions&status=OPEN,IN_PROGRESS' },
+          ]} />
+
+          <h2 className="border-b border-line pb-2 pt-2 text-base font-semibold text-ink">Assets by progress status</h2>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
             {CATS.map((c) => {
               const list = d.lists[c.key] as any[];

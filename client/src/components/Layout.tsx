@@ -1,8 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import {
-  Activity, BarChart3, Bell, BedDouble, Building2, CalendarCheck, ClipboardCheck, ClipboardList, FileClock, FilePlus2, Gauge, GitBranch, Images, Inbox,
-  KeyRound, LayoutDashboard, LogOut, Mail, Map, Menu, Settings, ShieldAlert, Users, X, Landmark, Hotel, ChevronDown, Plus, Search, Compass,
+  Activity, BarChart3, Bell, BedDouble, Building2, ClipboardCheck, ClipboardList, FileClock, FilePlus2, GitBranch, Inbox, KeyRound, LayoutDashboard, LogOut, Mail, Map, Menu, Settings, Users, X, Landmark, Hotel, ChevronDown, Plus, Search, Compass,
 } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { api, fileUrl } from '../lib/api';
@@ -10,10 +9,13 @@ import { cx } from './ui';
 import { ACTIVITY_PERMS, GlobalSearch } from './GlobalSearch';
 import { REPORT_TABS } from '../pages/daamr/ReportsHub';
 import { ACTIVITY_TABS } from '../pages/daamr/ActivitiesHub';
+import { HOSTEL_TABS } from '../pages/hostel/HostelHub';
+import { JM_TABS } from '../pages/jm/JmHub';
 
 /** `also`: other paths that count as this item (e.g. the tabs of a hub). */
 interface NavItem { to: string; label: string; icon: ReactNode; perms?: string[]; end?: boolean; also?: string[] }
-interface NavGroup { title: string; icon: ReactNode; items: NavItem[] }
+/** `base`: path prefixes owned by the group, so it opens on record pages (e.g. /hostels/bookings/123). */
+interface NavGroup { title: string; icon: ReactNode; items: NavItem[]; base?: string[] }
 
 const I = (C: any) => <C className="size-4 shrink-0" aria-hidden />;
 
@@ -29,6 +31,7 @@ const NAV: NavGroup[] = [
   },
   {
     title: 'Activity Management',
+    base: ['/daamr', '/courses'],
     icon: I(Activity),
     items: [
       { to: '/daamr/requests/new', label: 'Activity Form', icon: I(FilePlus2), perms: ['daamr.request.create'] },
@@ -38,31 +41,27 @@ const NAV: NavGroup[] = [
   },
   {
     title: 'Youth Hostels',
+    base: ['/hostels'],
     icon: I(Hotel),
     items: [
-      { to: '/hostels', label: 'Dashboard', icon: I(Gauge), end: true, perms: ['hostel.dashboard', 'hostel.booking.create', 'hostel.operations'] },
-      { to: '/hostels/bookings/new', label: 'New Booking', icon: I(FilePlus2), perms: ['hostel.booking.create'] },
-      { to: '/hostels/bookings', label: 'Booking Register', icon: I(ClipboardList), end: true, perms: ['hostel.booking.create', 'hostel.booking.view_all', 'hostel.booking.view_district', 'hostel.operations', 'hostel.dashboard'] },
-      { to: '/hostels/operations', label: 'Check-In / Check-Out', icon: I(CalendarCheck), perms: ['hostel.operations'] },
-      { to: '/hostels/manage', label: 'Hostels & Rooms', icon: I(BedDouble), perms: ['hostel.manage'] },
-      { to: '/hostels/reports', label: 'Utilization Reports', icon: I(BarChart3), perms: ['hostel.dashboard'] },
+      { to: '/hostels/bookings/new', label: 'Booking Form', icon: I(FilePlus2), perms: ['hostel.booking.create'] },
+      { to: '/hostels/bookings', label: 'Bookings', icon: I(ClipboardList), end: true, also: HOSTEL_TABS.map((t) => t.to), perms: HOSTEL_TABS.flatMap((t) => t.perms) },
+      { to: '/hostels/reports', label: 'Reports', icon: I(BarChart3), perms: ['hostel.dashboard'] },
     ],
   },
   {
     title: 'Jawan Markaz',
+    base: ['/jm'],
     icon: I(Landmark),
     items: [
-      { to: '/jm', label: 'Monitoring Dashboard', icon: I(Gauge), end: true, perms: ['jm.dashboard', 'jm.report.create'] },
-      { to: '/jm/assets', label: 'Asset Register', icon: I(Map), perms: ['jm.dashboard', 'jm.report.create', 'jm.asset.manage', 'jm.report.view_all'] },
-      { to: '/jm/reports/new', label: 'New Monitoring Report', icon: I(FilePlus2), perms: ['jm.report.create'] },
-      { to: '/jm/reports', label: 'Monitoring Reports', icon: I(ClipboardCheck), end: true, perms: ['jm.report.create', 'jm.report.view_all', 'jm.report.view_district', 'jm.dashboard'] },
-      { to: '/jm/gallery', label: 'Site Photographs', icon: I(Images), perms: ['jm.dashboard', 'jm.report.create', 'jm.asset.manage'] },
-      { to: '/jm/registers', label: 'Issues, Actions & Risks', icon: I(ShieldAlert), perms: ['jm.dashboard', 'jm.report.create'] },
-      { to: '/jm/analytics', label: 'Reports & Analytics', icon: I(BarChart3), perms: ['jm.dashboard'] },
+      { to: '/jm/reports/new', label: 'Monitoring Form', icon: I(FilePlus2), perms: ['jm.report.create'] },
+      { to: '/jm/reports', label: 'Monitoring', icon: I(ClipboardCheck), end: true, also: JM_TABS.map((t) => t.to), perms: JM_TABS.flatMap((t) => t.perms) },
+      { to: '/jm/analytics', label: 'Reports', icon: I(BarChart3), perms: ['jm.dashboard'] },
     ],
   },
   {
     title: 'Administration',
+    base: ['/admin'],
     icon: I(Settings),
     items: [
       { to: '/admin/users', label: 'Users & Roles', icon: I(Users), perms: ['admin.users'] },
@@ -99,7 +98,7 @@ function activeGroupOf(groups: NavGroup[], path: string) {
     const hit = end ? path === to : path === to || path.startsWith(to.endsWith('/') ? to : `${to}/`);
     if (hit && (!best || to.length > best.len)) best = { g: g.title, len: to.length };
   }
-  return best?.g ?? null;
+  return best?.g ?? groups.find((g) => g.base?.some((b) => path === b || path.startsWith(`${b}/`)))?.title ?? null;
 }
 
 const NAV_STATE_KEY = 'dya.nav.open';
@@ -249,7 +248,7 @@ function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void 
   useEffect(() => { if (open) { setQ(''); setSel(0); } }, [open]);
   if (!open) return null;
   const pages = NAV.flatMap((g) => g.items.filter((i) => !i.perms || can(...i.perms)).map((i) => ({ to: i.to, label: i.label, group: g.title, icon: i.icon })));
-  const reportTabs = [...ACTIVITY_TABS, ...REPORT_TABS].filter((t) => can(...t.perms)).map((t) => ({ to: t.to, label: t.label, group: 'Activity Management', icon: <t.icon className="size-4 shrink-0" aria-hidden /> }));
+  const reportTabs = [...ACTIVITY_TABS, ...REPORT_TABS, ...HOSTEL_TABS, ...JM_TABS].filter((t) => can(...t.perms)).map((t) => ({ to: t.to, label: t.label, group: 'Activity Management', icon: <t.icon className="size-4 shrink-0" aria-hidden /> }));
   pages.push(...reportTabs.filter((t) => !pages.some((x) => x.to === t.to && x.label === t.label)));
   const all = [...create.map((c) => ({ ...c, group: 'Create' })), ...pages];
   const term = q.trim().toLowerCase();

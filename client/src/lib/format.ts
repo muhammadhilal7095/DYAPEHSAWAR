@@ -27,3 +27,6 @@ export const nowLocalInput = () => {
   d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
   return d.toISOString().slice(0, 16);
 };
+
+/** '2026-10' → 'Oct 2026' (chart and table labels). */
+export const fmtMonth = (ym: string) => (/^\d{4}-\d{2}$/.test(ym) ? new Date(`${ym}-01T00:00:00Z`).toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' }) : ym);

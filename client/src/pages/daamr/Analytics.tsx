@@ -1,7 +1,7 @@
 import { qs } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { useApi, useQueryState } from '../../lib/hooks';
-import { fmtMoney, fmtNum } from '../../lib/format';
+import { fmtMoney, fmtNum, fmtMonth } from '../../lib/format';
 import { Card, ErrorBox, PageHeader, Spinner } from '../../components/ui';
 import { ExportMenu } from '../../components/DataTable';
 import { DaamrFilters } from './Dashboard';
@@ -29,7 +29,7 @@ export default function DaamrAnalytics() {
   const sum = (rows: any[], k: string) => rows.reduce((a, r) => a + (r[k] ?? 0), 0);
   return (
     <>
-      <PageHeader title="DAAMR Reports & Analytics" subtitle="Tabular breakdowns for reporting. Use Export for PDF, Excel or CSV." actions={can('daamr.export') && <ExportMenu url={(f) => `/api/daamr/dashboard/export${qs({ ...q, format: f })}`} />} />
+      <PageHeader title="DAAMR Reports & Analytics" subtitle="Tabular breakdowns for reporting. Use Export for PDF, Excel or CSV." actions={can('daamr.export') && <ExportMenu compact url={(f) => `/api/daamr/dashboard/export${qs({ ...q, format: f })}`} />} />
       <DaamrFilters q={q} setQ={setQ} />
       <ErrorBox error={error} />
       {loading && !d ? <Spinner /> : d && (
@@ -38,7 +38,7 @@ export default function DaamrAnalytics() {
           <T title="Activities by category" cols={[{ key: 'name', label: 'Category' }, { key: 'value', label: 'Activities', num: true, fmt: fmtNum }]} rows={d.charts.byCategory} footer={{ name: 'Total', value: sum(d.charts.byCategory, 'value') }} />
           <T title="Budget by district" cols={[{ key: 'name', label: 'District / HQ' }, { key: 'allocated', label: 'Allocated', num: true, fmt: fmtMoney }, { key: 'utilized', label: 'Utilized', num: true, fmt: fmtMoney }]} rows={d.charts.budgetByDistrict} footer={{ name: 'Total', allocated: sum(d.charts.budgetByDistrict, 'allocated'), utilized: sum(d.charts.budgetByDistrict, 'utilized') }} />
           <T title="Participant demographics" cols={[{ key: 'name', label: 'Category' }, { key: 'value', label: 'Participants', num: true, fmt: fmtNum }]} rows={d.charts.demographics} footer={{ name: `Total participants (counting rule)`, value: d.cards.totalParticipants }} />
-          <T title="Monthly activity count" cols={[{ key: 'month', label: 'Month' }, { key: 'value', label: 'Activities', num: true, fmt: fmtNum }]} rows={d.charts.monthly} />
+          <T title="Monthly activity count" cols={[{ key: 'month', label: 'Month' }, { key: 'value', label: 'Activities', num: true, fmt: fmtNum }]} rows={d.charts.monthly.map((m: any) => ({ ...m, month: fmtMonth(m.month) }))} />
           <T title="Request approval status" cols={[{ key: 'name', label: 'Status' }, { key: 'value', label: 'Requests', num: true, fmt: fmtNum }]} rows={d.charts.approvalStatus} footer={{ name: 'Total', value: d.cards.totalRequests }} />
           <T title="Approval processing time" cols={[{ key: 'name', label: 'Approval level' }, { key: 'avgHours', label: 'Avg hours', num: true }, { key: 'decisions', label: 'Decisions', num: true }]} rows={d.charts.processingTimes} />
         </div>

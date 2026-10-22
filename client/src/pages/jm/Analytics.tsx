@@ -3,7 +3,7 @@ import { Link } from 'react-router';
 import { qs } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { useApi, useCached, useDebounced, useDistricts, useQueryState } from '../../lib/hooks';
-import { addDays, fmtDate, humanize, todayISO } from '../../lib/format';
+import { addDays, fmtDate, humanize, todayISO, fmtMonth } from '../../lib/format';
 import { Badge, Card, ErrorBox, PageHeader, Spinner } from '../../components/ui';
 import { ExportMenu, MiniDate, MiniSelect, SearchInput } from '../../components/DataTable';
 import { ChartCard, Columns, HBars } from '../../components/Charts';
@@ -21,7 +21,7 @@ export default function JmAnalytics() {
   const two = [{ key: 'name', label: 'Category' }, { key: 'value', label: 'Count', numeric: true }];
   return (
     <>
-      <PageHeader title="Jawan Markaz Reports & Analytics" subtitle="Status distributions use each asset's latest verified report in the period." actions={can('jm.export') && <ExportMenu url={(f) => `/api/jm/dashboard/analytics/export${qs({ ...q, format: f })}`} />} />
+      <PageHeader title="Jawan Markaz Reports & Analytics" subtitle="Status distributions use each asset's latest verified report in the period." actions={can('jm.export') && <ExportMenu compact url={(f) => `/api/jm/dashboard/analytics/export${qs({ ...q, format: f })}`} />} />
       <div className="no-print mb-5 flex flex-wrap items-end gap-3 rounded-xl border border-line bg-white p-3 shadow-sm">
         <MiniDate label="From" value={q.from} onChange={(v) => setQ({ from: v })} />
         <MiniDate label="To" value={q.to} onChange={(v) => setQ({ to: v })} />
@@ -48,7 +48,7 @@ export default function JmAnalytics() {
           <ChartCard title="Schedule performance" rows={d.scheduleDistribution} columns={two}><HBars data={d.scheduleDistribution} valueLabel="Assets" /></ChartCard>
           <ChartCard title="Quality of work" rows={d.qualityDistribution} columns={two}><HBars data={d.qualityDistribution} valueLabel="Assets" /></ChartCard>
           <ChartCard title="Compliance" rows={d.complianceDistribution} columns={two}><HBars data={d.complianceDistribution} valueLabel="Assets" /></ChartCard>
-          <ChartCard title="Reports per month" rows={d.monthly} columns={[{ key: 'month', label: 'Month' }, { key: 'value', label: 'Reports', numeric: true }]}><Columns data={d.monthly} valueLabel="Reports" /></ChartCard>
+          <ChartCard title="Reports per month" rows={d.monthly.map((m: any) => ({ ...m, month: fmtMonth(m.month) }))} columns={[{ key: 'month', label: 'Month' }, { key: 'value', label: 'Reports', numeric: true }]}><Columns data={d.monthly.map((m: any) => ({ ...m, month: fmtMonth(m.month) }))} valueLabel="Reports" /></ChartCard>
           <ChartCard title="Issues by severity" rows={d.issuesBySeverity} columns={two}><HBars data={d.issuesBySeverity} valueLabel="Issues" /></ChartCard>
           <ChartCard title="Issues by category" rows={d.issuesByCategory} columns={two}><HBars data={d.issuesByCategory} valueLabel="Issues" /></ChartCard>
           <ChartCard title="Risks by level" rows={d.risksByLevel} columns={two}><HBars data={d.risksByLevel} valueLabel="Risks" /></ChartCard>

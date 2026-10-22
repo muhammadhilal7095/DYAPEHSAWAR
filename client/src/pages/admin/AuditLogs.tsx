@@ -13,7 +13,7 @@ export default function AuditLogs() {
   const [view, setView] = useState<any | null>(null);
   return (
     <>
-      <PageHeader title="Audit Logs" subtitle="Permanent, read-only record of every important action (database-enforced: entries cannot be edited or deleted)." actions={<ExportMenu url={(f) => `/api/admin/audit/export${qs({ ...params, format: f, page: '' })}`} />} />
+      <PageHeader title="Audit Logs" subtitle="Permanent, read-only record of every important action (database-enforced: entries cannot be edited or deleted)." actions={<ExportMenu compact url={(f) => `/api/admin/audit/export${qs({ ...params, format: f, page: '' })}`} />} />
       <Card bodyClass="p-0">
         <FilterBar onReset={() => setQ({ q: '', module: '', entityType: '', from: '', to: '' })}>
           <SearchInput value={q.q} onChange={(v) => setQ({ q: v })} placeholder="Reference, user, action…" />

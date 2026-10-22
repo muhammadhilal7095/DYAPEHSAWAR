@@ -22,7 +22,7 @@ export default function ReportList() {
       <PageHeader
         title="Activity Reports"
         subtitle="Completed-activity documentation: participants, budget utilisation, media coverage and evidence."
-        actions={<>{can('daamr.export') && <ExportMenu url={(f) => `/api/daamr/reports/export${qs({ ...params, format: f, page: '' })}`} />}{can('daamr.report.create') && <LinkButton to="/daamr/reports/new" icon={<Plus className="size-4" />}>New activity report</LinkButton>}</>}
+        actions={<>{can('daamr.export') && <ExportMenu compact url={(f) => `/api/daamr/reports/export${qs({ ...params, format: f, page: '' })}`} />}{can('daamr.report.create') && <LinkButton to="/daamr/reports/new" icon={<Plus className="size-4" />}>New activity report</LinkButton>}</>}
       />
       <Tabs value={q.scope} onChange={(v) => setQ({ scope: v })} tabs={[...(can('daamr.report.view_all', 'daamr.report.view_district') ? [{ value: 'all', label: 'All reports' }] : []), { value: 'assigned', label: 'Awaiting my verification' }, { value: 'mine', label: 'My reports' }]} />
       <Card bodyClass="p-0">

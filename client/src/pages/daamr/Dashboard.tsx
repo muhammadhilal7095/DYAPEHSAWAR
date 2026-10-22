@@ -2,7 +2,7 @@ import { CheckCircle2, ClipboardList, Clock, CornerUpLeft, FileCheck2, FileWarni
 import { qs } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { useApi, useDistricts, useQueryState } from '../../lib/hooks';
-import { fmtMoney, fmtNum } from '../../lib/format';
+import { fmtMoney, fmtNum, fmtMonth } from '../../lib/format';
 import { ErrorBox, PageHeader, Spinner, Stat } from '../../components/ui';
 import { ExportMenu, MiniDate, MiniSelect } from '../../components/DataTable';
 import { ChartCard, Columns, HBars, PairedBars, SERIES } from '../../components/Charts';
@@ -26,7 +26,7 @@ export default function DaamrDashboard() {
   const link = (status: string) => `/daamr/requests${qs({ scope: 'all', status, from: q.from, to: q.to, districtId: q.districtId })}`;
   return (
     <>
-      <PageHeader title="Participation & Budget Summary" subtitle="Live figures from saved records, limited to the records you are permitted to see." actions={can('daamr.export') && <ExportMenu url={(f) => `/api/daamr/dashboard/export${qs({ ...q, format: f })}`} />} />
+      <PageHeader title="Participation & Budget Summary" subtitle="Live figures from saved records, limited to the records you are permitted to see." actions={can('daamr.export') && <ExportMenu compact url={(f) => `/api/daamr/dashboard/export${qs({ ...q, format: f })}`} />} />
       <DaamrFilters q={q} setQ={setQ} />
       <ErrorBox error={error} />
       {loading && !d ? <Spinner /> : d && (
@@ -49,7 +49,7 @@ export default function DaamrDashboard() {
           <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-2">
             <ChartCard title="Activities by district" rows={d.charts.byDistrict} columns={[{ key: 'name', label: 'District' }, { key: 'value', label: 'Activities', numeric: true }]} height={300}><HBars data={d.charts.byDistrict} valueLabel="Activities" /></ChartCard>
             <ChartCard title="Activities by category" rows={d.charts.byCategory} columns={[{ key: 'name', label: 'Category' }, { key: 'value', label: 'Activities', numeric: true }]} height={300}><HBars data={d.charts.byCategory} valueLabel="Activities" /></ChartCard>
-            <ChartCard title="Monthly activity count" subtitle="By activity / start month" rows={d.charts.monthly} columns={[{ key: 'month', label: 'Month' }, { key: 'value', label: 'Activities', numeric: true }]}><Columns data={d.charts.monthly} valueLabel="Activities" /></ChartCard>
+            <ChartCard title="Monthly activity count" subtitle="By activity / start month" rows={d.charts.monthly.map((m: any) => ({ ...m, month: fmtMonth(m.month) }))} columns={[{ key: 'month', label: 'Month' }, { key: 'value', label: 'Activities', numeric: true }]}><Columns data={d.charts.monthly.map((m: any) => ({ ...m, month: fmtMonth(m.month) }))} valueLabel="Activities" /></ChartCard>
             <ChartCard title="Request approval status" rows={d.charts.approvalStatus} columns={[{ key: 'name', label: 'Status' }, { key: 'value', label: 'Requests', numeric: true }]}><HBars data={d.charts.approvalStatus} valueLabel="Requests" /></ChartCard>
             <ChartCard title="Participant demographics" subtitle="Overlapping categories are shown separately" rows={d.charts.demographics} columns={[{ key: 'name', label: 'Category' }, { key: 'value', label: 'Participants', numeric: true }]}><HBars data={d.charts.demographics} valueLabel="Participants" color={SERIES[0]} /></ChartCard>
             <ChartCard title="Allocated versus utilized budget" subtitle="PKR, by district" rows={d.charts.budgetByDistrict} columns={[{ key: 'name', label: 'District' }, { key: 'allocated', label: 'Allocated', numeric: true }, { key: 'utilized', label: 'Utilized', numeric: true }]}><PairedBars data={d.charts.budgetByDistrict} series={[{ key: 'allocated', label: 'Allocated' }, { key: 'utilized', label: 'Utilized' }]} /></ChartCard>

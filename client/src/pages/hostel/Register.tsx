@@ -1,9 +1,9 @@
 import { useNavigate } from 'react-router';
-import { Plus, Printer } from 'lucide-react';
+import { MapPin, Plus, Printer } from 'lucide-react';
 import { qs } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { useApi, useCached, useDebounced, useDistricts, useQueryState } from '../../lib/hooks';
-import { fmtDate, fmtDateTime, humanize } from '../../lib/format';
+import { fmtDate, humanize } from '../../lib/format';
 import { Badge, Button, Card, LinkButton, PageHeader, Pagination, Tabs } from '../../components/ui';
 import { DataTable, ExportMenu, FilterBar, MiniDate, MiniSelect, SearchInput } from '../../components/DataTable';
 
@@ -37,26 +37,39 @@ export default function Register() {
     <>
       <PageHeader
         title="Booking Register"
-        subtitle="Youth hostel booking requests, approvals and accommodation status."
+        subtitle="Booking requests, approvals and stay status for every youth hostel."
         actions={<>
           <Button variant="secondary" icon={<Printer className="size-4" />} onClick={() => window.print()}>Print</Button>
-          {can('hostel.export') && <ExportMenu url={(f) => `/api/hostel/bookings/export${qs({ ...params, format: f, page: '', sort: '' })}`} />}
+          {can('hostel.export') && <ExportMenu compact label="Export" url={(f) => `/api/hostel/bookings/export${qs({ ...params, format: f, page: '', sort: '' })}`} />}
           {can('hostel.booking.create') && <LinkButton to="/hostels/bookings/new" icon={<Plus className="size-4" />}>New booking</LinkButton>}
         </>}
       />
       <Tabs value={q.scope} onChange={(v) => setQ({ scope: v })} tabs={tabs} />
       <Card bodyClass="p-0">
-        <FilterBar onReset={() => setQ({ q: '', districtId: '', hostelId: '', organization: '', status: '', stayStatus: '', from: '', to: '' })}>
+        <FilterBar
+          onReset={() => setQ({ q: '', districtId: '', hostelId: '', organization: '', status: '', stayStatus: '', from: '', to: '' })}
+          moreActive={[q.districtId, q.organization, q.from, q.to].filter(Boolean).length}
+          more={
+            <>
+              <MiniSelect label="District / HQ" value={q.districtId} onChange={(v) => setQ({ districtId: v })} options={districts.map((d) => ({ value: d.id, label: d.name }))} />
+              <label className="flex w-[calc(50%-0.375rem)] flex-col gap-1 text-xs font-medium text-ink-3 sm:w-auto">Organization<input className="w-full rounded-lg border border-line bg-white px-2.5 py-2 text-sm text-ink shadow-sm focus:border-brand focus:outline-none sm:w-44" value={q.organization} onChange={(e) => setQ({ organization: e.target.value })} /></label>
+              <MiniSelect label="Date filter" value={q.dateField} all={null} onChange={(v) => setQ({ dateField: v })} options={[{ value: 'submitted', label: 'Request date' }, { value: 'checkin', label: 'Requested check-in' }, { value: 'approved', label: 'Approved check-in' }]} />
+              <MiniDate label="From" value={q.from} onChange={(v) => setQ({ from: v })} />
+              <MiniDate label="To" value={q.to} onChange={(v) => setQ({ to: v })} />
+            </>
+          }
+        >
           <SearchInput value={q.q} onChange={(v) => setQ({ q: v })} placeholder="Booking ID or guest name…" />
-          <MiniSelect label="District / HQ" value={q.districtId} onChange={(v) => setQ({ districtId: v })} options={districts.map((d) => ({ value: d.id, label: d.name }))} />
           <MiniSelect label="Hostel" value={q.hostelId} onChange={(v) => setQ({ hostelId: v })} options={hostels.map((h) => ({ value: h.id, label: h.name }))} />
-          <label className="flex flex-col gap-1 text-xs font-medium text-ink-3">Organization<input className="rounded-lg border border-line px-2.5 py-2 text-sm" value={q.organization} onChange={(e) => setQ({ organization: e.target.value })} /></label>
           <MiniSelect label="Booking status" value={q.status} onChange={(v) => setQ({ status: v })} options={['DRAFT', 'PENDING_REVIEW', 'UNDER_REVIEW', 'PENDING_FINAL', 'RETURNED', 'APPROVED', 'DECLINED', 'CANCELLED'].map((s) => ({ value: s, label: s === 'PENDING_FINAL' ? 'Pending final approval' : humanize(s) }))} />
           <MiniSelect label="Stay status" value={q.stayStatus} onChange={(v) => setQ({ stayStatus: v })} options={['AWAITING_ARRIVAL', 'CHECKED_IN', 'COMPLETED', 'NO_SHOW', 'CANCELLED'].map((s) => ({ value: s, label: humanize(s) }))} />
-          <MiniSelect label="Date filter" value={q.dateField} all={null} onChange={(v) => setQ({ dateField: v })} options={[{ value: 'submitted', label: 'Request date' }, { value: 'checkin', label: 'Requested check-in' }, { value: 'approved', label: 'Approved check-in' }]} />
-          <MiniDate label="From" value={q.from} onChange={(v) => setQ({ from: v })} />
-          <MiniDate label="To" value={q.to} onChange={(v) => setQ({ to: v })} />
         </FilterBar>
+        {data && (
+          <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-2 text-xs text-ink-3">
+            <span><span className="tabular font-semibold text-ink">{data.total}</span> {data.total === 1 ? 'booking' : 'bookings'}</span>
+            <span className="hidden sm:inline">Exports include every field · click a row to open the booking</span>
+          </div>
+        )}
         <DataTable
           loading={loading}
           rows={data?.rows}
@@ -64,26 +77,31 @@ export default function Register() {
           onSort={(s) => setQ({ sort: s })}
           onRowClick={(r: any) => nav(`/hostels/bookings/${r.id}`)}
           columns={[
-            { key: 'bookingId', header: 'Booking ID', sortKey: 'bookingId', primary: true, render: (r: any) => <span className="font-mono text-xs font-medium text-brand">{r.bookingId}</span> },
-            { key: 'submittedAt', header: 'Request date', sortKey: 'submittedAt', render: (r: any) => fmtDate(r.submittedAt) },
-            { key: 'requesterEmail', header: 'Requested by', hideOnCard: true, className: 'max-w-[160px] truncate' },
-            { key: 'district', header: 'District/HQ', render: (r: any) => r.district.name, hideOnCard: true },
-            { key: 'hostel', header: 'Youth hostel', render: (r: any) => r.hostel.name },
-            { key: 'guestName', header: 'Guest name', sortKey: 'guestName', render: (r: any) => <span className="font-medium">{r.guestName}</span> },
-            { key: 'cnic', header: 'CNIC/Passport', render: (r: any) => <span className="font-mono text-xs" title={r.identityMasked ? 'Masked — restricted information' : undefined}>{r.cnic}</span>, hideOnCard: true },
-            { key: 'mobile', header: 'Mobile', hideOnCard: true },
-            { key: 'organization', header: 'Organization' },
-            { key: 'referredBy', header: 'Referred by', hideOnCard: true, render: (r: any) => r.referredBy ? `${r.referredBy}${r.referrerDesignation ? ` (${r.referrerDesignation})` : ''}` : '—' },
-            { key: 'purpose', header: 'Purpose', hideOnCard: true, render: (r: any) => <span className="line-clamp-2 max-w-[200px]">{r.purpose}</span> },
-            { key: 'dates', header: 'Check-in / out', sortKey: 'checkIn', render: (r: any) => <span className="whitespace-nowrap text-xs">{fmtDate(r.requestedCheckIn)} → {fmtDate(r.requestedCheckOut)}</span> },
-            { key: 'guests', header: 'Guests / rooms', render: (r: any) => <span className="tabular">{r.numGuests} / {r.numRooms}</span> },
-            { key: 'docs', header: 'Docs', hideOnCard: true, render: (r: any) => (r.files.length ? `${r.files.length} file(s)` : '—') },
-            { key: 'approved', header: 'Approved dates', render: (r: any) => r.approvedCheckIn ? <span className="whitespace-nowrap text-xs">{fmtDate(r.approvedCheckIn)} → {fmtDate(r.approvedCheckOut)}</span> : '—' },
-            { key: 'status', header: 'Booking status', render: (r: any) => <BookingStatus b={r} /> },
-            { key: 'officer', header: 'With / approved by', render: (r: any) => r.currentAssignee?.name ?? r.approvedBy?.name ?? '—' },
-            { key: 'approvedAt', header: 'Approval date', hideOnCard: true, render: (r: any) => (r.approvedAt ? fmtDateTime(r.approvedAt) : '—') },
-            { key: 'hqRemarks', header: 'HQ remarks', hideOnCard: true, render: (r: any) => <span className="line-clamp-2 max-w-[200px] text-xs">{r.hqRemarks ?? '—'}</span> },
-            { key: 'emailStatus', header: 'Email', hideOnCard: true, render: (r: any) => (r.emailStatus === 'NONE' ? '—' : <Badge status={r.emailStatus} />) },
+            {
+              key: 'guestName', header: 'Booking', sortKey: 'guestName', primary: true, render: (r: any) => (
+                <div className="min-w-[190px] max-w-xs">
+                  <span className="font-mono text-[11px] font-medium text-brand">{r.bookingId}</span>
+                  <span className="mt-0.5 block font-medium leading-snug text-ink">{r.guestName}</span>
+                  {r.organization && <span className="mt-0.5 line-clamp-1 text-xs text-ink-3">{r.organization}</span>}
+                  <span className="mt-0.5 block text-[11px] text-ink-3 @[63rem]:hidden">Requested {fmtDate(r.submittedAt)}</span>
+                </div>
+              ),
+            },
+            { key: 'hostel', header: 'Youth hostel', render: (r: any) => <div className="min-w-[130px]"><span className="block">{r.hostel.name}</span><span className="inline-flex items-center gap-1 text-xs text-ink-3"><MapPin className="size-3" aria-hidden />{r.district.name}</span></div> },
+            {
+              key: 'dates', header: 'Stay', sortKey: 'checkIn', render: (r: any) => (
+                <div className="whitespace-nowrap text-sm">
+                  <span className="block">{fmtDate(r.requestedCheckIn)}</span>
+                  <span className="block text-xs text-ink-3">to {fmtDate(r.requestedCheckOut)}</span>
+                  {r.approvedCheckIn && (fmtDate(r.approvedCheckIn) !== fmtDate(r.requestedCheckIn) || fmtDate(r.approvedCheckOut) !== fmtDate(r.requestedCheckOut)) && (
+                    <span className="mt-0.5 block text-[11px] font-medium text-emerald-700">Approved {fmtDate(r.approvedCheckIn)} – {fmtDate(r.approvedCheckOut)}</span>
+                  )}
+                </div>
+              ),
+            },
+            { key: 'guests', header: 'Guests', render: (r: any) => <span className="tabular whitespace-nowrap"><span className="font-semibold">{r.numGuests}</span> <span className="text-xs text-ink-3">guests · {r.numRooms} rooms</span></span> },
+            { key: 'status', header: 'Status', render: (r: any) => <div className="min-w-[120px]"><BookingStatus b={r} />{(r.currentAssignee ?? r.approvedBy) && <span className="mt-1 block text-[11px] text-ink-3">{r.currentAssignee ? `With ${r.currentAssignee.name}` : `By ${r.approvedBy.name}`}</span>}</div> },
+            { key: 'submittedAt', header: 'Requested', sortKey: 'submittedAt', className: 'hidden @[63rem]:table-cell', hideOnCard: true, render: (r: any) => <div className="max-w-[170px] text-xs"><span className="block text-sm text-ink">{fmtDate(r.submittedAt)}</span><span className="block truncate text-ink-3">{r.requesterEmail}</span></div> },
           ]}
         />
         {data && <Pagination page={data.page} pageSize={data.pageSize} total={data.total} onPage={(p) => setQ({ page: String(p) })} />}

@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router';
-import { FilePlus2, Pencil } from 'lucide-react';
+import { Building2, CalendarDays, FilePlus2, HardHat, MapPin, Pencil, Search, TrendingUp, UserRound, Wallet } from 'lucide-react';
 import { useAuth } from '../../lib/auth';
 import { clearCache, useApi, useLookupLabel } from '../../lib/hooks';
 import { fmtDate, fmtDateTime, fmtMoney, humanize } from '../../lib/format';
-import { Badge, Button, Card, ErrorBox, KV, LinkButton, PageHeader, Spinner, Tabs } from '../../components/ui';
+import { Badge, Button, Card, DetailHeader, ErrorBox, FactGrid, KV, LinkButton, Spinner, Tabs } from '../../components/ui';
 import { Gallery, LazyMap, Uploader } from '../../components/Files';
 import { ChartCard, ProgressLine } from '../../components/Charts';
 import { AssetModal, ProgressBar } from './Assets';
@@ -25,12 +25,25 @@ export default function AssetDetail() {
   const timeline = [...data.reports].filter((r: any) => r.submittedAt).sort((x: any, y: any) => (x.submittedAt < y.submittedAt ? 1 : -1));
   return (
     <>
-      <PageHeader
+      <DetailHeader
         back="/jm/assets"
+        backLabel="Asset register"
+        reference={<>{a.assetCode}<span className="font-sans text-white/55"> · {a.district.name}</span></>}
         title={a.name}
-        subtitle={<span className="flex flex-wrap items-center gap-2"><span className="font-mono">{a.assetCode}</span>· {a.district.name}<Badge status={a.currentStatus} label={status(a.currentStatus)} /></span>}
-        actions={<>{data.canManage && <Button variant="secondary" icon={<Pencil className="size-4" />} onClick={() => setEdit(true)}>Edit asset</Button>}{can('jm.report.create') && <LinkButton to={`/jm/reports/new?assetId=${a.id}`} icon={<FilePlus2 className="size-4" />}>New monitoring report</LinkButton>}</>}
-      />
+        badges={<Badge status={a.currentStatus} label={status(a.currentStatus)} />}
+        actions={<>{data.canManage && <Button variant="secondary" icon={<Pencil className="size-4" />} onClick={() => setEdit(true)}>Edit asset</Button>}{can('jm.report.create') && <LinkButton variant="secondary" to={`/jm/reports/new?assetId=${a.id}`} icon={<FilePlus2 className="size-4" />}>New monitoring report</LinkButton>}</>}
+      >
+        <FactGrid items={[
+          { icon: <MapPin className="size-4" />, label: 'Location', value: a.location },
+          { icon: <TrendingUp className="size-4" />, label: 'Overall progress', value: <div className="w-36 max-w-full"><ProgressBar value={a.overallProgress} /></div> },
+          { icon: <CalendarDays className="size-4" />, label: 'Completion', value: <>{fmtDate(a.revisedCompletionDate ?? a.plannedCompletionDate)}{a.revisedCompletionDate && <span className="block text-xs font-normal text-amber-700">Revised from {fmtDate(a.plannedCompletionDate)}</span>}</> },
+          { icon: <Search className="size-4" />, label: 'Last inspection', value: a.lastInspectionDate ? fmtDate(a.lastInspectionDate) : null },
+          { icon: <Wallet className="size-4" />, label: 'Approved cost', value: a.approvedCost != null ? fmtMoney(a.approvedCost) : null },
+          { icon: <HardHat className="size-4" />, label: 'Contractor', value: a.contractor },
+          { icon: <Building2 className="size-4" />, label: 'Supervising department', value: a.supervisingDepartment },
+          { icon: <UserRound className="size-4" />, label: 'Supervising officer', value: a.supervisingOfficer },
+        ]} />
+      </DetailHeader>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Card title="Asset information" className="lg:col-span-2">
           <KV cols={3} items={[

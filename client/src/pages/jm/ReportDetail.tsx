@@ -1,10 +1,11 @@
 import { Link, useNavigate, useParams } from 'react-router';
-import { AlertTriangle, Download, Pencil, Printer, Trash2 } from 'lucide-react';
+import { AlertTriangle, Award, CalendarDays, ClipboardCheck, Clock, Download, MapPin, Pencil, Printer, Search, Trash2, TrendingUp, UserRound } from 'lucide-react';
+import { ProgressBar } from '../courses/CourseList';
 import { api, download } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { useHashScroll, useApi, useLookupLabel } from '../../lib/hooks';
 import { fmtDate, fmtDateTime, humanize } from '../../lib/format';
-import { Badge, Button, Card, ErrorBox, KV, LinkButton, Notice, PageHeader, Spinner, useConfirm, useToast } from '../../components/ui';
+import { Badge, Button, Card, DetailHeader, ErrorBox, FactGrid, KV, LinkButton, Notice, Spinner, useConfirm, useToast } from '../../components/ui';
 import { CurrentOfficer, EmailStatus, ReviewPanel, Timeline } from '../../components/Workflow';
 import { AttachmentList, Gallery, LazyMap } from '../../components/Files';
 import { SimpleTable } from './AssetDetail';
@@ -28,17 +29,30 @@ export default function JmReportDetail() {
   const t = (s?: string | null) => (s ? <span className="whitespace-pre-line">{s}</span> : null);
   return (
     <>
-      <PageHeader
+      <DetailHeader
         back="/jm/reports"
-        title={`${r.asset.name} — monitoring report`}
-        subtitle={<span className="flex flex-wrap items-center gap-2"><span className="font-mono">{r.reportNo}</span><Badge status={r.status} /><Badge status={r.scheduleClass} /></span>}
+        backLabel="Monitoring reports"
+        reference={<>{r.reportNo}<span className="font-sans text-white/55"> · {r.asset.assetCode}</span></>}
+        title={r.asset.name}
+        badges={<><Badge status={r.status} /><Badge status={r.scheduleClass} />{data.discrepancies.length > 0 && <Badge tone="amber" label="Discrepancy flagged" />}</>}
         actions={<>
           {data.can.edit && <LinkButton to={`/jm/reports/${id}/edit`} variant="secondary" icon={<Pencil className="size-4" />}>{r.status === 'RETURNED' ? 'Correct & resubmit' : 'Edit draft'}</LinkButton>}
-          {data.can.delete && <Button variant="ghost" icon={<Trash2 className="size-4" />} onClick={async () => { if (await confirm({ title: 'Delete draft?', message: 'This draft report will be deleted.', confirmLabel: 'Delete', tone: 'danger' })) { await api.del(`/api/jm/reports/${id}`); nav('/jm/reports'); } }}>Delete</Button>}
+          {data.can.delete && <Button variant="secondary" icon={<Trash2 className="size-4" />} onClick={async () => { if (await confirm({ title: 'Delete draft?', message: 'This draft report will be deleted.', confirmLabel: 'Delete', tone: 'danger' })) { await api.del(`/api/jm/reports/${id}`); nav('/jm/reports'); } }}>Delete</Button>}
           <Button variant="secondary" icon={<Printer className="size-4" />} onClick={() => window.print()}>Print</Button>
           <Button variant="secondary" icon={<Download className="size-4" />} onClick={() => download(`/api/jm/reports/${id}/pdf`).catch((e) => toast('error', e.message))}>PDF</Button>
         </>}
-      />
+      >
+        <FactGrid items={[
+          { icon: <MapPin className="size-4" />, label: 'District / HQ', value: r.district.name },
+          { icon: <CalendarDays className="size-4" />, label: 'Reporting period', value: <>{fmtDate(r.periodFrom)}<span className="block text-xs font-normal text-ink-3">to {fmtDate(r.periodTo)}</span></> },
+          { icon: <Search className="size-4" />, label: 'Inspection', value: <>{fmtDate(r.inspectionDate)}<span className="block text-xs font-normal text-ink-3">{L.insp(r.inspectionType)}</span></> },
+          { icon: <UserRound className="size-4" />, label: 'Reporting officer', value: <>{r.reportingOfficer.name}<span className="block text-xs font-normal text-ink-3">{fmtDate(r.submittedAt)}</span></> },
+          { icon: <TrendingUp className="size-4" />, label: 'Progress', value: <div className="w-36 max-w-full"><ProgressBar value={r.currentProgress} />{r.plannedProgress != null && <span className="mt-0.5 block text-xs font-normal text-ink-3">Planned {r.plannedProgress}%</span>}</div> },
+          { icon: <Clock className="size-4" />, label: 'Delay', value: r.delayDays != null ? `${r.delayDays} days` : null },
+          { icon: <Award className="size-4" />, label: 'Quality', value: r.qualityRating ? L.quality(r.qualityRating) : null },
+          { icon: <ClipboardCheck className="size-4" />, label: 'Project status', value: r.projectStatus ? L.status(r.projectStatus) : null },
+        ]} />
+      </DetailHeader>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
           {data.discrepancies.length > 0 && (

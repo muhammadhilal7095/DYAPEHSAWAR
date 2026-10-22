@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { BedDouble, CalendarPlus, LogIn, LogOut, Pencil, Printer, Trash2, UserX, XCircle } from 'lucide-react';
+import { BedDouble, Building2, CalendarDays, CalendarPlus, ClipboardCheck, Hotel, LogIn, LogOut, Pencil, Printer, Send, Trash2, UserRound, UserX, Users, XCircle } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { useApi, useLookupLabel } from '../../lib/hooks';
 import { addDays, fmtDate, fmtDateTime, humanize, nightsBetween, nowLocalInput, toISODate } from '../../lib/format';
-import { Badge, Button, Card, Checkbox, ErrorBox, Grid, Input, KV, LinkButton, Modal, Notice, PageHeader, Spinner, Textarea, useConfirm, useFormErrors, useToast } from '../../components/ui';
+import { Badge, Button, Card, Checkbox, DetailHeader, ErrorBox, FactGrid, Grid, Input, KV, LinkButton, Modal, Notice, Spinner, Textarea, useConfirm, useFormErrors, useToast } from '../../components/ui';
 import { CurrentOfficer, EmailStatus, ReasonModal, ReviewPanel, Timeline } from '../../components/Workflow';
 import { AttachmentList, Uploader } from '../../components/Files';
 import { BookingStatus } from './Register';
@@ -30,17 +30,30 @@ export default function BookingDetail() {
 
   return (
     <>
-      <PageHeader
+      <DetailHeader
         back="/hostels/bookings"
-        title={`${b.guestName} — ${b.hostel.name}`}
-        subtitle={<span className="flex flex-wrap items-center gap-2"><span className="font-mono">{b.bookingId}</span><BookingStatus b={b} /></span>}
+        backLabel="Booking register"
+        reference={<>{b.bookingId}<span className="font-sans text-white/55"> · {b.hostel.name}</span></>}
+        title={b.guestName}
+        badges={<><Badge status={b.status} />{b.status === 'APPROVED' && b.stayStatus !== 'NONE' && <Badge status={b.stayStatus} />}{datesChanged && <Badge tone="amber" label="Dates amended" />}</>}
         actions={<>
           {can.edit && <LinkButton to={`/hostels/bookings/${id}/edit`} variant="secondary" icon={<Pencil className="size-4" />}>{b.status === 'RETURNED' ? 'Correct & resubmit' : 'Edit draft'}</LinkButton>}
-          {can.delete && <Button variant="ghost" icon={<Trash2 className="size-4" />} onClick={async () => { if (await confirm({ title: 'Delete draft?', message: 'This draft will be permanently deleted.', confirmLabel: 'Delete', tone: 'danger' })) { await api.del(`/api/hostel/bookings/${id}`); nav('/hostels/bookings'); } }}>Delete</Button>}
+          {can.delete && <Button variant="secondary" icon={<Trash2 className="size-4" />} onClick={async () => { if (await confirm({ title: 'Delete draft?', message: 'This draft will be permanently deleted.', confirmLabel: 'Delete', tone: 'danger' })) { await api.del(`/api/hostel/bookings/${id}`); nav('/hostels/bookings'); } }}>Delete</Button>}
           {can.cancel && <Button variant="secondary" icon={<XCircle className="size-4" />} onClick={() => setModal('cancel')}>Cancel booking</Button>}
           <Button variant="secondary" icon={<Printer className="size-4" />} onClick={() => window.print()}>Print</Button>
         </>}
-      />
+      >
+        <FactGrid items={[
+          { icon: <Hotel className="size-4" />, label: 'Youth hostel', value: <>{b.hostel.name}<span className="block text-xs font-normal text-ink-3">{b.district.name}</span></> },
+          { icon: <CalendarDays className="size-4" />, label: b.approvedCheckIn ? 'Approved stay' : 'Requested stay', value: <>{fmtDate(b.approvedCheckIn ?? b.requestedCheckIn)}<span className="block text-xs font-normal text-ink-3">to {fmtDate(b.approvedCheckOut ?? b.requestedCheckOut)} · {(b.approvedNights ?? b.requestedNights)} night{(b.approvedNights ?? b.requestedNights) === 1 ? '' : 's'}</span></> },
+          { icon: <Users className="size-4" />, label: 'Guests & rooms', value: `${b.numGuests} guest${b.numGuests === 1 ? '' : 's'} · ${b.numRooms} room${b.numRooms === 1 ? '' : 's'}` },
+          { icon: <Building2 className="size-4" />, label: 'Organization', value: b.organization },
+          { icon: <BedDouble className="size-4" />, label: 'Rooms allocated', value: activeRes.length ? activeRes.map((r: any) => r.room.roomNumber).join(', ') : null },
+          { icon: <UserRound className="size-4" />, label: 'Referred by', value: b.referredBy ? <>{b.referredBy}{b.referrerDesignation && <span className="block text-xs font-normal text-ink-3">{b.referrerDesignation}</span>}</> : null },
+          { icon: <Send className="size-4" />, label: 'Requested', value: <>{fmtDate(b.submittedAt)}<span className="block truncate text-xs font-normal text-ink-3">{b.requesterEmail}</span></> },
+          { icon: <ClipboardCheck className="size-4" />, label: b.approvedBy ? 'Approved by' : data.timeline?.instance.status === 'IN_PROGRESS' ? 'Currently with' : 'Workflow', value: b.approvedBy ? <>{b.approvedBy.name}<span className="block text-xs font-normal text-ink-3">{fmtDate(b.approvedAt)}</span></> : data.timeline?.instance.status === 'IN_PROGRESS' ? <>{data.timeline.instance.currentAssignee?.name ?? <span className="text-amber-700">Pending assignment</span>}<span className="block text-xs font-normal text-ink-3">Level {data.timeline.instance.currentLevelOrder} of {data.timeline.instance.totalLevels}</span></> : data.timeline ? humanize(data.timeline.instance.status) : null },
+        ]} />
+      </DetailHeader>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
           {(can.checkIn || can.checkOut || can.noShow || can.extend) && (

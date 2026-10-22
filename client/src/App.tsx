@@ -27,6 +27,8 @@ const P = {
   DaamrAnalytics: lazy(() => import('./pages/daamr/Analytics')),
   ReportsHub: lazy(() => import('./pages/daamr/ReportsHub')),
   ActivitiesHub: lazy(() => import('./pages/daamr/ActivitiesHub')),
+  HostelHub: lazy(() => import('./pages/hostel/HostelHub')),
+  JmHub: lazy(() => import('./pages/jm/JmHub')),
   // Courses
   CourseList: lazy(() => import('./pages/courses/CourseList')),
   CourseDetail: lazy(() => import('./pages/courses/CourseDetail')),
@@ -122,24 +124,28 @@ export function App() {
             <Route path="courses/:id" element={<P.CourseDetail />} />
             <Route path="courses/:courseId/sessions/:sid" element={<P.SessionPage />} />
 
-            <Route path="hostels" element={g(['hostel.dashboard', 'hostel.booking.create', 'hostel.operations'], <P.HostelDashboard />)} />
-            <Route path="hostels/bookings" element={<P.BookingRegister />} />
+            <Route element={<P.HostelHub />}>
+              <Route path="hostels" element={g(['hostel.dashboard', 'hostel.booking.create', 'hostel.operations'], <P.HostelDashboard />)} />
+              <Route path="hostels/bookings" element={<P.BookingRegister />} />
+              <Route path="hostels/operations" element={g(['hostel.operations'], <P.Operations />)} />
+              <Route path="hostels/manage" element={g(['hostel.manage'], <P.HostelsAdmin />)} />
+            </Route>
             <Route path="hostels/bookings/new" element={g(['hostel.booking.create'], <P.BookingForm />)} />
             <Route path="hostels/bookings/:id" element={<P.BookingDetail />} />
             <Route path="hostels/bookings/:id/edit" element={g(['hostel.booking.create'], <P.BookingForm />)} />
-            <Route path="hostels/operations" element={g(['hostel.operations'], <P.Operations />)} />
-            <Route path="hostels/manage" element={g(['hostel.manage'], <P.HostelsAdmin />)} />
             <Route path="hostels/reports" element={g(['hostel.dashboard'], <P.HostelReports />)} />
 
-            <Route path="jm" element={g(['jm.dashboard', 'jm.report.create'], <P.JmDashboard />)} />
-            <Route path="jm/assets" element={<P.JmAssets />} />
+            <Route element={<P.JmHub />}>
+              <Route path="jm" element={g(['jm.dashboard', 'jm.report.create'], <P.JmDashboard />)} />
+              <Route path="jm/reports" element={<P.JmReportList />} />
+              <Route path="jm/assets" element={<P.JmAssets />} />
+              <Route path="jm/gallery" element={<P.JmGallery />} />
+              <Route path="jm/registers" element={<P.JmRegisters />} />
+            </Route>
             <Route path="jm/assets/:id" element={<P.JmAssetDetail />} />
-            <Route path="jm/reports" element={<P.JmReportList />} />
             <Route path="jm/reports/new" element={g(['jm.report.create'], <P.JmReportForm />)} />
             <Route path="jm/reports/:id" element={<P.JmReportDetail />} />
             <Route path="jm/reports/:id/edit" element={g(['jm.report.create'], <P.JmReportForm />)} />
-            <Route path="jm/registers" element={<P.JmRegisters />} />
-            <Route path="jm/gallery" element={<P.JmGallery />} />
             <Route path="jm/analytics" element={g(['jm.dashboard'], <P.JmAnalytics />)} />
 
             <Route path="admin/users" element={g(['admin.users'], <P.Users />)} />
