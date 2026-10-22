@@ -107,7 +107,9 @@ const isBuilt = () => ['server/dist/index.js', 'client/dist/index.html'].every((
   let locked = false;
   try {
     if (!process.env.DATA_ENCRYPTION_KEY && process.env.NODE_ENV === 'production') throw new Error('DATA_ENCRYPTION_KEY environment variable is not set.');
-    const env = { ...process.env, PATH: toolPath() };
+    // Shared hosting caps the number of threads per account; the native build tools (Tailwind's
+    // Rust scanner, esbuild, libuv) otherwise start one per CPU core and crash with EAGAIN.
+    const env = { ...process.env, PATH: toolPath(), RAYON_NUM_THREADS: '1', GOMAXPROCS: '1', UV_THREADPOOL_SIZE: '2' };
     const serverDir = path.join(__dirname, 'server');
     while (!(locked = tryLock())) {
       status = 'Another start-up is building the portal — this page refreshes itself.';
