@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
 import {
-  AlertTriangle, CalendarDays, Check, CheckCircle2, CircleDot, ClipboardCheck, Clock, CornerUpLeft, Crown, Download, FilePlus2, FileSpreadsheet, Info, MapPin,
-  Pencil, Printer, Trash2, UserPlus, UserRound, Users, XCircle,
+  AlertTriangle, ArrowRight, Building2, CalendarDays, Check, CheckCircle2, CircleDot, ClipboardCheck, Clock, CornerUpLeft, Crown, Download, FilePlus2, FileSpreadsheet, Info, MapPin,
+  GraduationCap, Pencil, Printer, Trash2, UserPlus, UserRound, Users, XCircle,
 } from 'lucide-react';
 import { api, download, fileUrl, qs } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
@@ -64,65 +64,66 @@ export default function ActivityDetail() {
     <>
       {/* Header */}
       <div className="mb-4 overflow-hidden rounded-2xl border border-line bg-white shadow-sm">
-        <div className="grid grid-cols-1 md:grid-cols-[280px_1fr]">
-          <div className="relative aspect-[16/9] bg-gradient-to-br from-brand-50 to-gray-100 md:aspect-auto md:min-h-[200px]">
-            {data.cover ? <img src={fileUrl(data.cover.id)} alt="Activity cover" className="absolute inset-0 size-full object-cover" /> : (
-              <div className="absolute inset-0 grid place-items-center text-brand/40"><CalendarDays className="size-14" /></div>
-            )}
-          </div>
-          <div className="min-w-0 p-5">
-            <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="relative bg-gradient-to-br from-brand-700 via-brand-800 to-[#062a1a] px-5 py-5 text-white sm:px-6">
+          <div aria-hidden className="pointer-events-none absolute inset-0 opacity-[0.06]" style={{ backgroundImage: 'radial-gradient(circle, white 1px, transparent 1px)', backgroundSize: '20px 20px' }} />
+          <div className="relative flex flex-wrap items-start justify-between gap-4">
+            <div className="flex min-w-0 flex-1 items-start gap-4 max-sm:basis-full">
+              {data.cover && <img src={fileUrl(data.cover.id)} alt="Activity cover" className="hidden size-24 shrink-0 rounded-xl object-cover shadow-lg ring-2 ring-white/20 sm:block" />}
               <div className="min-w-0">
-                <Link to="/daamr/requests" className="no-print text-xs font-medium text-ink-3 hover:text-ink">← Activities</Link>
-                <h1 className="mt-1 text-xl font-semibold text-ink sm:text-2xl">{r.subject}</h1>
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <span className="font-mono text-xs text-ink-2">{r.daamrId}</span>
+                <Link to="/daamr/requests" className="no-print inline-flex items-center gap-1 text-xs font-medium text-white/65 hover:text-white">← All activities</Link>
+                <p className="mt-2 font-mono text-xs tracking-wide text-emerald-200/90">{r.daamrId}{r.category ? <span className="font-sans text-white/55"> · {humanize(r.category)}</span> : null}</p>
+                <h1 className="mt-0.5 text-xl font-semibold leading-snug tracking-tight sm:text-2xl">{r.subject}</h1>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
                   <Badge status={r.lifecycle} />
-                  <Badge status={r.priority} label={`${humanize(r.priority)} priority`} />
+                  {r.priority !== 'NORMAL' && <Badge status={r.priority} label={`${humanize(r.priority)} priority`} />}
                   {overdue && <Badge tone="red" label="Overdue" />}
                   {r.activityType === 'COURSE' && <Badge tone="violet" label={`Course · ${r.trainingDays ?? '?'} training days`} />}
-                  {r.category && <span className="text-xs text-ink-3">· {humanize(r.category)}</span>}
                 </div>
               </div>
-              <div className="no-print flex flex-wrap gap-2">
-                {can.edit && <LinkButton to={`/daamr/requests/${id}/edit`} variant="secondary" icon={<Pencil className="size-4" />}>{r.status === 'RETURNED' ? 'Update & resubmit' : 'Edit'}</LinkButton>}
-                {can.delete && <Button variant="ghost" icon={<Trash2 className="size-4" />} onClick={del}>Delete</Button>}
-                <Button variant="secondary" icon={<Printer className="size-4" />} onClick={() => window.print()}>Print</Button>
-                {can.export && <Button variant="secondary" icon={<Download className="size-4" />} onClick={() => setTab('export')}>Export</Button>}
-              </div>
             </div>
-            <dl className="mt-4 grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2 xl:grid-cols-4">
-              <Fact icon={<MapPin className="size-4" />} label="Venue" value={`${r.venue}, ${r.district.name}`} />
-              <Fact icon={<CalendarDays className="size-4" />} label="Dates" value={`${fmtDate(r.startDate)}${r.startTime ? ` ${r.startTime}` : ''} – ${fmtDate(r.endDate)}${r.endTime ? ` ${r.endTime}` : ''}`} />
-              <Fact icon={<UserRound className="size-4" />} label="Responsible officer" value={data.leadOfficer ? `${data.leadOfficer.name}${data.leadOfficer.designation ? ` — ${data.leadOfficer.designation}` : ''}` : <span className="text-amber-700">Not assigned</span>} />
-              <Fact icon={<ClipboardCheck className="size-4" />} label="Next reviewer" value={data.nextReviewer ? (data.nextReviewer.name ? `${data.nextReviewer.name} — ${data.nextReviewer.level}` : <span className="text-amber-700">{data.nextReviewer.level} (pending assignment)</span>) : '—'} />
-              <Fact icon={<Clock className="size-4" />} label="Next task deadline" value={nextDeadline ? <span className={cx(new Date(nextDeadline) < new Date() && 'font-medium text-red-700')}>{fmtDate(nextDeadline)}</span> : '—'} />
-              <Fact icon={<Users className="size-4" />} label="Assigned staff" value={activeStaff.length ? `${activeStaff.length} member(s)` : '—'} />
-              <Fact icon={<Info className="size-4" />} label="Created by" value={`${r.requester.name}, ${fmtDate(r.createdAt)}`} />
-              <Fact icon={<Info className="size-4" />} label="Department" value={r.department?.name ?? '—'} />
-            </dl>
+            <div className="no-print flex flex-wrap gap-2">
+              {can.edit && <LinkButton to={`/daamr/requests/${id}/edit`} variant="secondary" icon={<Pencil className="size-4" />}>{r.status === 'RETURNED' ? 'Update & resubmit' : 'Edit'}</LinkButton>}
+              {can.delete && <Button variant="secondary" icon={<Trash2 className="size-4" />} onClick={del}>Delete</Button>}
+              <Button variant="secondary" icon={<Printer className="size-4" />} onClick={() => window.print()}>Print</Button>
+              {can.export && <Button variant="secondary" icon={<Download className="size-4" />} onClick={() => setTab('export')}>Export</Button>}
+            </div>
           </div>
         </div>
+        <dl className="grid grid-cols-2 border-b border-line xl:grid-cols-4 [&>div]:border-line [&>div]:border-b [&>div:nth-child(odd)]:border-r xl:[&>div]:border-r xl:[&>div:nth-child(4n)]:border-r-0 xl:[&>div:nth-last-child(-n+4)]:border-b-0">
+          <Fact icon={<MapPin className="size-4" />} label="Venue" value={`${r.venue}, ${r.district.name}`} />
+          <Fact icon={<CalendarDays className="size-4" />} label="Schedule" value={<>{fmtDate(r.startDate)}{r.startTime ? `, ${r.startTime}` : ''}<span className="block text-xs font-normal text-ink-3">to {fmtDate(r.endDate)}{r.endTime ? `, ${r.endTime}` : ''}</span></>} />
+          <Fact icon={<UserRound className="size-4" />} label="Responsible officer" value={data.leadOfficer ? <>{data.leadOfficer.name}{data.leadOfficer.designation && <span className="block text-xs font-normal text-ink-3">{data.leadOfficer.designation}</span>}</> : <span className="inline-flex rounded-md bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-800 ring-1 ring-amber-200">Not assigned</span>} />
+          <Fact icon={<ClipboardCheck className="size-4" />} label="Next reviewer" value={data.nextReviewer ? (data.nextReviewer.name ? <>{data.nextReviewer.name}<span className="block text-xs font-normal text-ink-3">{data.nextReviewer.level}</span></> : <span className="text-amber-700">{data.nextReviewer.level} (pending assignment)</span>) : null} />
+          <Fact icon={<Clock className="size-4" />} label="Next task deadline" value={nextDeadline ? <span className={cx(new Date(nextDeadline) < new Date() && 'text-red-700')}>{fmtDate(nextDeadline)}</span> : null} />
+          <Fact icon={<Users className="size-4" />} label="Assigned staff" value={activeStaff.length ? `${activeStaff.length} member${activeStaff.length === 1 ? '' : 's'}` : null} />
+          <Fact icon={<Info className="size-4" />} label="Created by" value={<>{r.requester.name}<span className="block text-xs font-normal text-ink-3">{fmtDate(r.createdAt)}</span></>} />
+          <Fact icon={<Building2 className="size-4" />} label="Department" value={r.department?.name} />
+        </dl>
         <LifecycleTracker r={r} timeline={timeline} reportTimeline={reportTimeline} hasStaff={activeStaff.length > 0} />
       </div>
 
       {r.activityType === 'COURSE' && r.status === 'APPROVED' && (
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-violet-200 bg-violet-50 p-4">
-          <div className="text-sm">
-            <p className="font-semibold text-violet-900">Course execution</p>
+        <div className="mb-4 flex flex-wrap items-center gap-4 rounded-xl border border-line border-l-4 border-l-brand bg-white p-4 shadow-sm">
+          <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand ring-1 ring-brand-100"><GraduationCap className="size-5" /></span>
+          <div className="min-w-[12rem] flex-1 text-sm">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-3">Course execution</p>
             {r.course ? (
-              <p className="text-violet-900/80">{r.course.courseNo} · {humanize(r.course.status)} · {r.course.durationDays} training days, {fmtDate(r.course.startDate)} – {fmtDate(r.course.endDate)}</p>
+              <p className="mt-0.5 text-ink"><span className="font-mono text-xs font-medium text-brand">{r.course.courseNo}</span> · <span className="font-medium">{humanize(r.course.status)}</span> · {r.course.durationDays} training days, {fmtDate(r.course.startDate)} – {fmtDate(r.course.endDate)}</p>
             ) : (
-              <p className="text-violet-900/80">The course record has not been created. An administrator can set it up now.</p>
+              <p className="mt-0.5 text-ink-2">The course record has not been created. An administrator can set it up now.</p>
             )}
           </div>
-          {r.course ? <LinkButton to={`/courses/${r.course.id}`}>Open course</LinkButton> : can.setupCourse && <Button onClick={async () => { try { const x = await api.post(`/api/courses/setup/${r.id}`); nav(`/courses/${x.id}`); } catch (e: any) { toast('error', e.message); } }}>Set up course</Button>}
+          {r.course ? <LinkButton to={`/courses/${r.course.id}`} icon={<ArrowRight className="size-4" />} className="max-sm:w-full">Open course</LinkButton> : can.setupCourse && <Button onClick={async () => { try { const x = await api.post(`/api/courses/setup/${r.id}`); nav(`/courses/${x.id}`); } catch (e: any) { toast('error', e.message); } }}>Set up course</Button>}
         </div>
       )}
 
       {data.outstanding.length > 0 && (
-        <Card title="Outstanding actions" className="mb-4" bodyClass="py-3">
-          <ul className="space-y-1.5 text-sm">
+        <section aria-labelledby="todo" className="mb-4 rounded-xl border border-amber-200 border-l-4 border-l-amber-500 bg-amber-50/50 p-4 shadow-sm">
+          <h2 id="todo" className="flex items-center gap-2 text-sm font-semibold text-ink">
+            Action required
+            <span className="rounded-full bg-amber-500 px-2 text-[11px] font-bold leading-5 text-white">{data.outstanding.length}</span>
+          </h2>
+          <ul className="mt-2 space-y-1.5 text-sm text-ink-2">
             {data.outstanding.map((o: any, i: number) => (
               <li key={i} className="flex items-start gap-2">
                 {o.tone === 'danger' ? <AlertTriangle className="mt-0.5 size-4 shrink-0 text-red-600" /> : o.tone === 'warning' ? <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600" /> : <CircleDot className="mt-0.5 size-4 shrink-0 text-blue-600" />}
@@ -130,7 +131,7 @@ export default function ActivityDetail() {
               </li>
             ))}
           </ul>
-        </Card>
+        </section>
       )}
 
       {(can.canDecide || can.canReassign || can.canReopen) && (
@@ -178,12 +179,13 @@ export default function ActivityDetail() {
 }
 
 function Fact({ icon, label, value }: { icon: ReactNode; label: string; value: ReactNode }) {
+  const empty = value === null || value === undefined || value === '' || value === '—';
   return (
-    <div className="flex min-w-0 gap-2">
-      <span className="mt-0.5 text-ink-3">{icon}</span>
+    <div className="flex min-w-0 gap-3 px-4 py-3 sm:px-5 sm:py-3.5">
+      <span className="mt-0.5 hidden size-8 shrink-0 place-items-center rounded-lg bg-gray-50 text-ink-3 ring-1 ring-line sm:grid">{icon}</span>
       <div className="min-w-0">
-        <dt className="text-xs text-ink-3">{label}</dt>
-        <dd className="line-clamp-2 break-words font-medium text-ink">{value}</dd>
+        <dt className="text-[11px] font-semibold uppercase tracking-wider text-ink-3">{label}</dt>
+        <dd className={cx('mt-0.5 line-clamp-3 break-words text-sm', empty ? 'italic text-ink-3' : 'font-medium text-ink')}>{empty ? 'Not set' : value}</dd>
       </div>
     </div>
   );
@@ -225,7 +227,11 @@ function LifecycleTracker({ r, timeline, reportTimeline, hasStaff }: { r: any; t
     attention: { dot: 'bg-amber-500 text-white ring-4 ring-amber-100', icon: <AlertTriangle className="size-3.5" />, text: 'Needs action' },
   };
   return (
-    <div className="border-t border-line bg-gray-50/60 px-5 py-4">
+    <div className="bg-gray-50/60 px-5 py-4">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-3">Workflow progress</p>
+        <p className="text-xs text-ink-3"><span className="tabular font-semibold text-ink">{steps.filter((s) => s.state === 'done').length}</span> of {steps.length} steps complete</p>
+      </div>
       <ol className="flex gap-0 overflow-x-auto pb-1" aria-label="Activity workflow progress">
         {steps.map((s, i) => (
           <li key={s.label} className="relative flex min-w-[118px] flex-1 flex-col items-center text-center">
