@@ -26,6 +26,7 @@ const P = {
   DaamrGallery: lazy(() => import('./pages/daamr/Gallery')),
   DaamrAnalytics: lazy(() => import('./pages/daamr/Analytics')),
   ReportsHub: lazy(() => import('./pages/daamr/ReportsHub')),
+  ActivitiesHub: lazy(() => import('./pages/daamr/ActivitiesHub')),
   // Courses
   CourseList: lazy(() => import('./pages/courses/CourseList')),
   CourseDetail: lazy(() => import('./pages/courses/CourseDetail')),
@@ -99,9 +100,13 @@ export function App() {
             <Route path="notifications" element={<P.Notifications />} />
             <Route path="profile" element={<P.Profile />} />
 
-            <Route path="daamr" element={g(['daamr.dashboard', 'daamr.request.create', 'daamr.report.create', 'daamr.assign'], <P.ActivityDashboard />)} />
-            <Route path="daamr/assignments" element={<P.Assignments />} />
-            <Route path="daamr/requests" element={<P.RequestList />} />
+            <Route element={<P.ActivitiesHub />}>
+              <Route path="daamr" element={g(['daamr.dashboard', 'daamr.request.create', 'daamr.report.create', 'daamr.assign'], <P.ActivityDashboard />)} />
+              <Route path="daamr/requests" element={<P.RequestList />} />
+              <Route path="daamr/assignments" element={<P.Assignments />} />
+              <Route path="courses" element={<P.CourseList />} />
+              <Route path="daamr/gallery" element={<P.DaamrGallery />} />
+            </Route>
             <Route path="daamr/requests/new" element={g(['daamr.request.create'], <P.ActivityForm />)} />
             <Route path="daamr/requests/:id" element={<P.ActivityDetail />} />
             <Route path="daamr/requests/:id/edit" element={g(['daamr.request.create'], <P.ActivityForm />)} />
@@ -113,9 +118,7 @@ export function App() {
             <Route path="daamr/reports/new" element={<P.ReportForm />} />
             <Route path="daamr/reports/:id" element={<P.ReportDetail />} />
             <Route path="daamr/reports/:id/edit" element={<P.ReportForm />} />
-            <Route path="daamr/gallery" element={<P.DaamrGallery />} />
 
-            <Route path="courses" element={<P.CourseList />} />
             <Route path="courses/:id" element={<P.CourseDetail />} />
             <Route path="courses/:courseId/sessions/:sid" element={<P.SessionPage />} />
 
