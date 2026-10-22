@@ -1,10 +1,10 @@
 import { Link } from 'react-router';
-import { AlarmClock, CheckCircle2, ClipboardList, CornerUpLeft, FilePen, Hourglass, ListChecks, PlayCircle, Plus, Stamp, UserX, BadgeCheck } from 'lucide-react';
+import { AlarmClock, ChevronRight, CheckCircle2, ClipboardList, CornerUpLeft, FilePen, Hourglass, ListChecks, PlayCircle, Plus, Stamp, UserX, BadgeCheck } from 'lucide-react';
 import { qs } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { useApi, useCached, useDistricts, useLookups, useQueryState } from '../../lib/hooks';
 import { fmtNum, humanize } from '../../lib/format';
-import { ErrorBox, LinkButton, PageHeader, Spinner, Stat, cx } from '../../components/ui';
+import { ErrorBox, LinkButton, PageHeader, Spinner, cx } from '../../components/ui';
 import { ExportMenu, MiniDate, MiniSelect } from '../../components/DataTable';
 import { ChartCard, Columns, HBars } from '../../components/Charts';
 
@@ -27,7 +27,7 @@ export default function ActivityDashboard() {
         subtitle={`Live figures from saved records${can('daamr.request.view_all') ? '' : ', limited to the activities you are permitted to see'}. Activities are counted once each, by start date.`}
         actions={
           <>
-            {can('daamr.export') && <ExportMenu url={(f) => `/api/daamr/dashboard/activities/export${qs({ ...q, format: f })}`} formats={['pdf', 'xlsx']} />}
+            {can('daamr.export') && <ExportMenu compact label="Export" url={(f) => `/api/daamr/dashboard/activities/export${qs({ ...q, format: f })}`} formats={['pdf', 'xlsx']} />}
             {can('daamr.request.create') && <LinkButton to="/daamr/requests/new" icon={<Plus className="size-4" />}>Create activity</LinkButton>}
           </>
         }
@@ -44,7 +44,7 @@ export default function ActivityDashboard() {
       </div>
 
       <ErrorBox error={error} />
-      {loading && !d ? <Spinner /> : d && (
+      {loading && !d ? <Spinner /> : d && (() => { const monthly = d.charts.monthly.map((m: any) => ({ ...m, label: monthLabel(m.month) })); return (
         <>
           {(d.mine.openTasks > 0 || d.mine.awaitingReview > 0) && (
             <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -53,20 +53,42 @@ export default function ActivityDashboard() {
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
-            <Stat label="Total activities" value={fmtNum(d.cards.total)} to={list({})} icon={<ClipboardList className="size-5" />} hint="Submitted (excludes drafts)" />
-            <Stat label="Draft activities" value={fmtNum(d.cards.draft)} to={list({ lifecycle: 'DRAFT' })} icon={<FilePen className="size-5" />} tone="gray" />
-            <Stat label="Pending assignments" value={fmtNum(d.cards.pendingAssignments)} to={list({ unassigned: '1', lifecycle: '' })} icon={<UserX className="size-5" />} tone="amber" hint="No staff assigned" />
-            <Stat label="Activities in progress" value={fmtNum(d.cards.inProgress)} to={list({ lifecycle: 'IN_PROGRESS' })} icon={<PlayCircle className="size-5" />} tone="blue" />
-            <Stat label="Pending reviews" value={fmtNum(d.cards.pendingReviews)} to={list({ lifecycle: 'UNDER_REVIEW,REPORT_REVIEW' })} icon={<Hourglass className="size-5" />} tone="amber" hint="Activity or report review" />
-            <Stat label="Changes requested" value={fmtNum(d.cards.changesRequested)} to={list({ lifecycle: 'CHANGES_REQUESTED' })} icon={<CornerUpLeft className="size-5" />} tone="amber" />
-            <Stat label="Approved activities" value={fmtNum(d.cards.approved)} to={list({ lifecycle: 'APPROVED' })} icon={<BadgeCheck className="size-5" />} tone="green" hint="Approved, execution not started" />
-            <Stat label="Completed activities" value={fmtNum(d.cards.completed)} to={list({ lifecycle: 'COMPLETED' })} icon={<CheckCircle2 className="size-5" />} tone="green" />
-            <Stat label="Overdue activities" value={fmtNum(d.cards.overdue)} to={list({ overdue: '1', lifecycle: '' })} icon={<AlarmClock className="size-5" />} tone={d.cards.overdue ? 'red' : 'gray'} hint="Past end date or task deadline" />
+          <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+            <Headline label="Total activities" value={d.cards.total} note="Submitted · drafts excluded" to={list({})} icon={<ClipboardList className="size-5" />} accent="border-t-brand" chip="bg-brand-50 text-brand" />
+            <Headline label="In progress" value={d.cards.inProgress} note="Approved and under execution" to={list({ lifecycle: 'IN_PROGRESS' })} icon={<PlayCircle className="size-5" />} accent="border-t-blue-600" chip="bg-blue-50 text-blue-700" />
+            <Headline label="Completed" value={d.cards.completed} note={d.cards.total ? `${Math.round((d.cards.completed / d.cards.total) * 100)}% of total · report verified` : 'Report verified'} to={list({ lifecycle: 'COMPLETED' })} icon={<CheckCircle2 className="size-5" />} accent="border-t-emerald-600" chip="bg-emerald-50 text-emerald-700" />
+            <Headline label="Overdue" value={d.cards.overdue} note="Past end date or task deadline" to={list({ overdue: '1', lifecycle: '' })} icon={<AlarmClock className="size-5" />} accent={d.cards.overdue ? 'border-t-red-600' : 'border-t-gray-300'} chip={d.cards.overdue ? 'bg-red-50 text-red-700' : 'bg-gray-100 text-gray-600'} />
           </div>
 
+          <section aria-labelledby="pipeline" className="mt-4 overflow-hidden rounded-xl border border-line bg-white shadow-sm">
+            <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-line px-4 py-2.5">
+              <h2 id="pipeline" className="text-sm font-semibold text-ink">Approval pipeline</h2>
+              <p className="text-xs text-ink-3">Activities waiting at each stage · click a stage to open the list</p>
+            </div>
+            <ol className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
+              {[
+                { label: 'Draft', value: d.cards.draft, note: 'Not yet submitted', to: list({ lifecycle: 'DRAFT' }), icon: <FilePen className="size-4" />, tone: 'text-gray-600' },
+                { label: 'Awaiting staff', value: d.cards.pendingAssignments, note: 'No staff assigned', to: list({ unassigned: '1', lifecycle: '' }), icon: <UserX className="size-4" />, tone: 'text-amber-700' },
+                { label: 'Pending review', value: d.cards.pendingReviews, note: 'Activity or report review', to: list({ lifecycle: 'UNDER_REVIEW,REPORT_REVIEW' }), icon: <Hourglass className="size-4" />, tone: 'text-amber-700' },
+                { label: 'Changes requested', value: d.cards.changesRequested, note: 'Returned to requester', to: list({ lifecycle: 'CHANGES_REQUESTED' }), icon: <CornerUpLeft className="size-4" />, tone: 'text-orange-700' },
+                { label: 'Approved', value: d.cards.approved, note: 'Execution not started', to: list({ lifecycle: 'APPROVED' }), icon: <BadgeCheck className="size-4" />, tone: 'text-emerald-700' },
+              ].map((x, i, all) => (
+                <li key={x.label} className={cx('relative border-line max-lg:border-b sm:border-r', i === all.length - 1 && 'max-sm:col-span-2 lg:border-r-0')}>
+                  <Link to={x.to} className="group block h-full px-4 py-3.5 transition hover:bg-gray-50">
+                    <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-ink-3">
+                      <span className={x.tone}>{x.icon}</span>{x.label}
+                    </span>
+                    <span className="tabular mt-1 block text-2xl font-bold tracking-tight text-ink">{fmtNum(x.value)}</span>
+                    <span className="block text-xs text-ink-3">{x.note}</span>
+                  </Link>
+                  {i < all.length - 1 && <ChevronRight className="absolute -right-2.5 top-1/2 z-10 hidden size-5 -translate-y-1/2 rounded-full bg-white text-ink-3 ring-1 ring-line lg:block" aria-hidden />}
+                </li>
+              ))}
+            </ol>
+          </section>
+
           <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <ChartCard title="Activities by month" subtitle="By start month" rows={d.charts.monthly} columns={[{ key: 'month', label: 'Month' }, { key: 'value', label: 'Activities', numeric: true }]}><Columns data={d.charts.monthly} valueLabel="Activities" /></ChartCard>
+            <ChartCard title="Activities by month" subtitle="By start month" rows={monthly} columns={[{ key: 'label', label: 'Month' }, { key: 'value', label: 'Activities', numeric: true }]}><Columns data={monthly} xKey="label" valueLabel="Activities" /></ChartCard>
             <ChartCard title="Activities by status" rows={d.charts.byStatus} columns={[{ key: 'name', label: 'Status' }, { key: 'value', label: 'Activities', numeric: true }]}><HBars data={d.charts.byStatus} valueLabel="Activities" /></ChartCard>
             <ChartCard title="Activities by district" rows={d.charts.byDistrict} columns={[{ key: 'name', label: 'District / HQ' }, { key: 'value', label: 'Activities', numeric: true }]} height={Math.max(260, d.charts.byDistrict.length * 28)}><HBars data={d.charts.byDistrict} valueLabel="Activities" /></ChartCard>
             <ChartCard title="Activities by category" rows={d.charts.byCategory} columns={[{ key: 'name', label: 'Category' }, { key: 'value', label: 'Activities', numeric: true }]}><HBars data={d.charts.byCategory} valueLabel="Activities" /></ChartCard>
@@ -78,7 +100,7 @@ export default function ActivityDashboard() {
             </div>
           </div>
         </>
-      )}
+      ); })()}
     </>
   );
 }
@@ -92,6 +114,21 @@ function MineTile({ to, icon, title, value, note, alert }: { to: string; icon: R
         <span className="tabular block text-2xl font-semibold text-ink">{value}</span>
         <span className={cx('block text-xs', alert ? 'font-medium text-red-700' : 'text-ink-3')}>{note}</span>
       </span>
+    </Link>
+  );
+}
+
+const monthLabel = (ym: string) => new Date(`${ym}-01T00:00:00Z`).toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' });
+
+function Headline({ label, value, note, to, icon, accent, chip }: { label: string; value: number; note: string; to: string; icon: React.ReactNode; accent: string; chip: string }) {
+  return (
+    <Link to={to} className={cx('group flex flex-col rounded-xl border border-t-4 border-line bg-white p-4 shadow-sm transition hover:shadow-md', accent)}>
+      <span className="flex items-start justify-between gap-2">
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-3">{label}</span>
+        <span className={cx('rounded-lg p-1.5', chip)}>{icon}</span>
+      </span>
+      <span className="tabular mt-1 text-3xl font-bold tracking-tight text-ink">{fmtNum(value)}</span>
+      <span className="mt-auto pt-1 text-xs text-ink-3">{note}</span>
     </Link>
   );
 }
